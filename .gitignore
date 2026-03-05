@@ -223,4 +223,4 @@ mlflow.db
 .docker/
 
 #Imagenes
-.png
+*.png
