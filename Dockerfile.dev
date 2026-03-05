@@ -1,0 +1,21 @@
+FROM python
+
+WORKDIR /app
+
+# Dependencias del sistema
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Instala dependencias Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Jupyter para exploración
+RUN pip install jupyterlab
+
+# Monta el código como volumen (no lo copia)
+# Se hace en docker-compose
+
+CMD ["bash"]
