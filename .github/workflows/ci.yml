@@ -23,7 +23,8 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install fastapi uvicorn xgboost scikit-learn \
-                      pandas numpy joblib pydantic matplotlib
+                      pandas numpy joblib pydantic matplotlib \
+                      mlflow
 
       - name: Generate data
         run: python src/generate_data.py
