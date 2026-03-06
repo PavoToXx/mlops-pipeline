@@ -9,6 +9,9 @@ dist/
 build/
 .env
 models/*.pkl
-data/raw/*.csv
+data/raw/*.csv  
 data/processed/*.csv
 mlflow/mlruns/
+.gitignore
+*.ipynb
+.pytest_cache/
