@@ -1,25 +1,25 @@
 # API
-fastapi==0.115.0
-uvicorn==0.30.0
-pydantic==2.7.0
+fastapi
+uvicorn
+pydantic
 
 # ML
-scikit-learn==1.5.0
-xgboost==2.0.3
-pandas==2.2.0
-numpy==1.26.0
-joblib==1.4.0
+scikit-learn
+xgboost
+pandas
+numpy
+joblib
 
 # MLflow
-mlflow==2.14.0
+mlflow
 
 # AWS
-boto3==1.34.0
-sagemaker==2.224.0
+boto3
+sagemaker
 
 # Tests
-pytest==8.2.0
-httpx==0.27.0
+pytest
+httpx
 
 # Utils
-python-dotenv==1.0.0
+python-dotenv
