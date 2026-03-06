@@ -6,7 +6,7 @@ app = FastAPI(
     title       = "Server Failure Prediction API",
     description = "Predicts if a server will fail in the next hours based on metrics",
     version     = "1.0.0",
-    authors     = "Joseph Dominguez"
+    authors     = "Joseph Dominguez A."
 )
 
 app.include_router(health.router,  tags=["Health"])
