@@ -4,7 +4,7 @@ from api.routers import predict, health, metrics
 
 app = FastAPI(
     title       = "Server Failure Prediction API",
-    description = "Predicts if a server will fail based on metrics",
+    description = "Predicts if a server will fail in the next hours based on metrics",
     version     = "1.0.0",
 )
 
