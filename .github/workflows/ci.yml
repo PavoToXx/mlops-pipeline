@@ -1,0 +1,57 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  train-and-validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install fastapi uvicorn xgboost scikit-learn \
+                      pandas numpy joblib pydantic matplotlib
+
+      - name: Generate data
+        run: python src/generate_data.py
+
+      - name: Preprocess data
+        run: python src/preprocess.py
+
+      - name: Train model
+        run: python src/train.py
+
+      - name: Evaluate model
+        run: python src/evaluate.py
+
+      - name: Validate F1 score
+        run: |
+          python3 -c "
+          import json
+          with open('reports/metrics.json') as f:
+              m = json.load(f)
+          f1 = m['f1']
+          print(f'F1 Score: {f1}')
+          assert f1 >= 0.85, f'F1 {f1} < 0.85 — pipeline rechazado ❌'
+          print('✅ Modelo aprobado — F1 >= 0.85')
+          "
+
+      - name: Test API startup
+        run: |
+          python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 &
+          sleep 3
+          curl -f http://localhost:8000/health
+          echo "✅ API respondiendo"
