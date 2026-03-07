@@ -38,7 +38,7 @@ def load_models():
 
     model  = joblib.load(f"{tmp}/model.pkl")
     scaler = joblib.load(f"{tmp}/scaler.pkl")
-    print("✅ Modelos cargados desde S3")
+    print("✅ Modelos cargados desde S3 ")
 
 def build_features(raw: dict) -> pd.DataFrame:
     cpu   = raw['cpu_usage']
