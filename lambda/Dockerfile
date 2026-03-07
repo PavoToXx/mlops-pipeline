@@ -1,15 +1,12 @@
-FROM public.ecr.aws/lambda/python:3.12
+FROM public.ecr.aws/lambda/python:3.11
 
-# Instala dependencias
 RUN pip install --no-cache-dir \
-    xgboost \
-    scikit-learn \
-    pandas \
-    numpy \
-    joblib
+    xgboost==2.1.3 \
+    scikit-learn==1.6.1 \
+    pandas==2.2.3 \
+    numpy==1.26.4 \
+    joblib==1.4.2
 
-# Copia el handler
 COPY lambda_function.py ${LAMBDA_TASK_ROOT}
 
-# Handler
 CMD ["lambda_function.lambda_handler"]
