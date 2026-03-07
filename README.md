@@ -5,10 +5,14 @@ Proyecto de MLOps para entrenar, evaluar y servir un modelo de clasificacion que
 ## Que incluye
 
 - Pipeline de datos y entrenamiento (`src/`)
+- **Tracking de experimentos con MLflow** (`mlruns/`)
 - API REST con FastAPI (`api/`)
 - Empaquetado con Docker (`Dockerfile`, `docker-compose.yml`)
 - Variante de inferencia en AWS Lambda (`lambda/`)
-- CI y CD con GitHub Actions (`.github/workflows/ci.yml`, `.github/workflows/cd.yml`)
+- CI con tests automatizados (`.github/workflows/ci.yml`)
+- CI de entrenamiento automático (`.github/workflows/train.yml`)
+- CD con despliegue a Lambda (`.github/workflows/cd.yml`)
+- **Monitoreo con CloudWatch** (`monitoring/`)
 
 ## Objetivo
 
@@ -27,8 +31,10 @@ data/               # Datasets raw y procesados
 models/             # Artefactos del modelo (no versionados)
 reports/            # Metricas y reportes
 lambda/             # Funcion y contenedor para AWS Lambda
-monitoring/         # Espacio para monitoreo/observabilidad
-tests/              # Tests unitarios del pipeline, predictor y lambda
+mlruns/             # Experimentos MLflow (no versionado)
+monitoring/         # Scripts de configuracion de CloudWatch
+tests/              # Tests unitarios (pipeline, API, Lambda)
+.github/workflows/  # CI/CD con GitHub Actions
 ```
 
 ## Stack tecnologico
@@ -36,9 +42,12 @@ tests/              # Tests unitarios del pipeline, predictor y lambda
 - Python 3.11+
 - FastAPI + Uvicorn
 - scikit-learn + XGBoost
+- **MLflow** (experiment tracking)
 - pandas + numpy
 - Docker / Docker Compose
 - AWS Lambda + ECR + S3
+- **AWS CloudWatch** (logs y metricas)
+- **GitHub Actions** (CI/CD)
 
 ## Instalacion local
 
@@ -69,6 +78,23 @@ Artefactos generados:
 - `data/processed/y_train.csv`, `data/processed/y_test.csv`
 - `models/model.pkl`, `models/scaler.pkl`
 - `reports/metrics.json`
+- `mlruns/` (experimentos MLflow)
+
+## MLflow Tracking
+
+El entrenamiento registra automaticamente en MLflow:
+- Hiperparametros del modelo
+- Metricas de evaluacion
+- Modelo entrenado
+- Tags (tipo de modelo, aprobacion)
+
+Ver experimentos:
+
+```bash
+mlflow ui
+```
+
+Accede a `http://localhost:5000` para explorar runs, comparar metricas y descargar modelos.
 
 ## Ejecutar API
 
@@ -132,29 +158,65 @@ Response ejemplo:
 ## Tests
 
 El proyecto incluye pruebas en:
-- `tests/test_preprocess.py`
-- `tests/test_predict.py`
-- `tests/test_lambda.py`
+- `tests/test_preprocess.py` - Tests de feature engineering
+- `tests/test_predict.py` - Tests del predictor
+- `tests/test_lambda.py` - Tests de la funcion Lambda
+- `tests/test_api.py` - Tests de endpoints FastAPI
 
 Ejecutar tests:
 
 ```bash
 pytest tests/ -v
+
+# Con coverage
+pytest tests/ --cov=api --cov=src --cov=lambda -v
 ```
 
 ## CI/CD
 
-- `ci.yml`: ejecuta tests en `push` y `pull_request` hacia `main`.
-- `cd.yml`: construye imagen Docker de `lambda/`, publica en ECR y actualiza Lambda cuando hay cambios en `lambda/**`.
+### Workflows de GitHub Actions
+
+- **`ci.yml`**: Ejecuta tests en `push` y `pull_request` hacia `main`
+- **`train.yml`**: Pipeline completo de entrenamiento
+  - Genera datos, preprocesa, entrena y evalua
+  - Registra experimentos en MLflow
+  - Valida metricas contra threshold (F1 >= 0.85)
+  - Sube artefactos (modelo, metricas, MLflow runs)
+  - Comenta metricas en PRs
+- **`cd.yml`**: Despliegue continuo a Lambda
+  - Construye imagen Docker de `lambda/`
+  - Publica en Amazon ECR
+  - Actualiza funcion Lambda cuando hay cambios en `lambda/**`
+
+## Monitoreo
+
+Scripts en `monitoring/` para configurar CloudWatch:
+
+```bash
+# Configurar alarmas y dashboard
+python monitoring/setup_cloudwatch.py
+
+# Con parametros personalizados
+python monitoring/setup_cloudwatch.py --function-name tu-lambda --sns-topic arn:aws:sns:...
+```
+
+Componentes de monitoreo:
+- **Alarmas**: Latencia alta, errores, predicciones criticas, throttles
+- **Dashboard**: Metricas visuales de predicciones, latencia, errores
+- **Logs estructurados**: JSON con eventos, metricas y traces
+- **Metricas custom**: Namespace `MLOps/ServerFailure`
+
+Ver documentacion completa en [`monitoring/README.md`](monitoring/README.md).
 
 ## Seguridad y publicacion responsable
 
 Para evitar filtrar informacion sensible:
 - No publiques secretos (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, tokens, API keys).
-- No subas artefactos pesados o sensibles (`models/*.pkl`, `data/raw/*.csv`, `data/processed/*.csv`).
+- No subas artefactos pesados o sensibles (`models/*.pkl`, `data/raw/*.csv`, `data/processed/*.csv`, `mlruns/`).
 - Usa `GitHub Secrets` para credenciales de despliegue.
 - Si publicas logs, revisa que no incluyan IDs internos, rutas privadas o datos operativos sensibles.
 - Antes de abrir el repositorio, rota cualquier credencial usada en entornos de prueba.
+- Los experimentos de MLflow pueden contener datos sensibles; no los versiones en Git.
 
 ## Licencia
 

@@ -1,0 +1,115 @@
+name: ML Training Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'data/**'
+      - 'requirements.txt'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'data/**'
+
+env:
+  PYTHON_VERSION: '3.11'
+  MIN_F1_SCORE: 0.85
+
+jobs:
+  train-and-evaluate:
+    name: Train & Evaluate Model
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generar dataset
+        run: python src/generate_data.py
+
+      - name: Preprocesar datos
+        run: python src/preprocess.py
+
+      - name: Entrenar modelo con MLflow
+        run: python src/train.py
+
+      - name: Evaluar modelo
+        run: python src/evaluate.py
+
+      - name: Leer métricas
+        id: metrics
+        run: |
+          echo "f1=$(python -c "import json; print(json.load(open('reports/metrics.json'))['f1'])")" >> $GITHUB_OUTPUT
+          echo "accuracy=$(python -c "import json; print(json.load(open('reports/metrics.json'))['accuracy'])")" >> $GITHUB_OUTPUT
+          echo "roc_auc=$(python -c "import json; print(json.load(open('reports/metrics.json'))['roc_auc'])")" >> $GITHUB_OUTPUT
+
+      - name: Validar threshold de métricas
+        run: |
+          F1_SCORE=${{ steps.metrics.outputs.f1 }}
+          echo "F1 Score: $F1_SCORE"
+          if (( $(echo "$F1_SCORE < $MIN_F1_SCORE" | bc -l) )); then
+            echo "❌ Model rejected: F1 score ($F1_SCORE) below threshold ($MIN_F1_SCORE)"
+            exit 1
+          fi
+          echo "✅ Model approved: F1 score ($F1_SCORE) meets threshold"
+
+      - name: Subir artefactos del modelo
+        uses: actions/upload-artifact@v4
+        with:
+          name: trained-model
+          path: |
+            models/*.pkl
+            reports/metrics.json
+            reports/*.png
+          retention-days: 30
+
+      - name: Subir MLflow runs
+        uses: actions/upload-artifact@v4
+        with:
+          name: mlflow-runs
+          path: mlruns/
+          retention-days: 30
+
+      - name: Comentar métricas en PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const f1 = '${{ steps.metrics.outputs.f1 }}';
+            const accuracy = '${{ steps.metrics.outputs.accuracy }}';
+            const roc_auc = '${{ steps.metrics.outputs.roc_auc }}';
+            const approved = parseFloat(f1) >= ${{ env.MIN_F1_SCORE }};
+            
+            const comment = `## 📊 Model Training Results
+            
+            | Metric | Value |
+            |--------|-------|
+            | **F1 Score** | ${f1} |
+            | **Accuracy** | ${accuracy} |
+            | **ROC AUC** | ${roc_auc} |
+            
+            **Status**: ${approved ? '✅ Approved' : '❌ Rejected'}
+            **Threshold**: F1 ≥ ${{ env.MIN_F1_SCORE }}
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

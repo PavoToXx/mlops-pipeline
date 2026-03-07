@@ -21,23 +21,25 @@ def load_data():
     return X_train, X_test, y_train, y_test
 
 def train_model(X_train, X_test, y_train, y_test):
-    model = XGBClassifier(
-        n_estimators      = 300,
-        max_depth         = 6,
-        learning_rate     = 0.05,
-        subsample         = 0.8,
-        colsample_bytree  = 0.8,
-        use_label_encoder = False,
-        eval_metric       = "logloss",
-        random_state      = 42,
-        early_stopping_rounds = 20,
-    )
+    params = {
+        "n_estimators":      300,
+        "max_depth":         6,
+        "learning_rate":     0.05,
+        "subsample":         0.8,
+        "colsample_bytree":  0.8,
+        "use_label_encoder": False,
+        "eval_metric":       "logloss",
+        "random_state":      42,
+        "early_stopping_rounds": 20,
+    }
+    
+    model = XGBClassifier(**params)
     model.fit(
         X_train, y_train,
         eval_set        = [(X_test, y_test)],
         verbose         = 50,
     )
-    return model
+    return model, params
 
 def evaluate_model(model, X_test, y_test):
     y_pred  = model.predict(X_test)
@@ -73,18 +75,52 @@ def print_feature_importance(model, feature_names):
 if __name__ == "__main__":
     print("🚀 Iniciando entrenamiento...\n")
 
+    # Configurar MLflow
+    mlflow.set_experiment("server-failure-prediction")
+    mlflow.set_tracking_uri("file:./mlruns")
+
     X_train, X_test, y_train, y_test = load_data()
-    model   = train_model(X_train, X_test, y_train, y_test)
-    metrics = evaluate_model(model, X_test, y_test)
-
-    print_feature_importance(model, X_train.columns.tolist())
-    save_model(model)
-
-    print(f"\n{'='*45}")
-    if metrics['f1'] >= 0.85:
-        print(f"✅ MODELO APROBADO  — F1: {metrics['f1']}")
-        print(f"   Listo para deploy a producción")
-    else:
-        print(f"❌ MODELO RECHAZADO — F1: {metrics['f1']}")
-        print(f"   Requiere ajuste")
-    print(f"{'='*45}")
+    
+    with mlflow.start_run():
+        # Entrenar modelo
+        model, params = train_model(X_train, X_test, y_train, y_test)
+        
+        # Log de hiperparámetros
+        mlflow.log_params(params)
+        mlflow.log_param("train_samples", len(X_train))
+        mlflow.log_param("test_samples", len(X_test))
+        mlflow.log_param("n_features", X_train.shape[1])
+        
+        # Evaluar
+        metrics = evaluate_model(model, X_test, y_test)
+        
+        # Log de métricas
+        mlflow.log_metrics(metrics)
+        
+        # Log del modelo
+        mlflow.sklearn.log_model(
+            model, 
+            "model",
+            registered_model_name="server-failure-predictor"
+        )
+        
+        # Feature importance
+        print_feature_importance(model, X_train.columns.tolist())
+        
+        # Guardar modelo localmente también
+        save_model(model)
+        
+        # Tags útiles
+        mlflow.set_tag("model_type", "XGBoost")
+        mlflow.set_tag("task", "binary_classification")
+        mlflow.set_tag("approved", "true" if metrics['f1'] >= 0.85 else "false")
+        
+        print(f"\n{'='*45}")
+        print(f"📊 MLflow Run ID: {mlflow.active_run().info.run_id}")
+        if metrics['f1'] >= 0.85:
+            print(f"✅ MODELO APROBADO  — F1: {metrics['f1']}")
+            print(f"   Listo para deploy a producción")
+        else:
+            print(f"❌ MODELO RECHAZADO — F1: {metrics['f1']}")
+            print(f"   Requiere ajuste")
+        print(f"{'='*45}")
