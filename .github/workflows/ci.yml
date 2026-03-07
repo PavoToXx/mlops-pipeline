@@ -1,58 +1,64 @@
-name: CI/CD Pipeline
+name: CD — Deploy to AWS Lambda
 
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+    paths:
+      - 'lambda/**'
+      - '.github/workflows/cd.yml'
+
+env:
+  AWS_REGION:     us-east-1
+  ECR_REPOSITORY: mlops-lambda
+  LAMBDA_NAME:    mlops-pipeline-function
 
 jobs:
-  train-and-validate:
+  deploy:
+    name: Build & Deploy
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          python-version: "3.12"
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
 
-      - name: Install dependencies
+      - name: Login a Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag y push imagen a ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG:    ${{ github.sha }}
         run: |
-          pip install --upgrade pip
-          pip install fastapi uvicorn xgboost scikit-learn \
-                      pandas numpy joblib pydantic matplotlib \
-                      mlflow
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false \
+            --output type=docker \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
+            lambda/
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
 
-      - name: Generate data
-        run: python src/generate_data.py
-
-      - name: Preprocess data
-        run: python src/preprocess.py
-
-      - name: Train model
-        run: python src/train.py
-
-      - name: Evaluate model
-        run: python src/evaluate.py
-
-      - name: Validate F1 score
+      - name: Actualizar Lambda con nueva imagen
         run: |
-          python3 -c "
-          import json
-          with open('reports/metrics.json') as f:
-              m = json.load(f)
-          f1 = m['f1']
-          print(f'F1 Score: {f1}')
-          assert f1 >= 0.85, f'F1 {f1} < 0.85 — pipeline rechazado ❌'
-          print('✅ Modelo aprobado — F1 >= 0.85')
-          "
+          aws lambda update-function-code \
+            --function-name ${{ env.LAMBDA_NAME }} \
+            --image-uri ${{ steps.build-image.outputs.image }} \
+            --region ${{ env.AWS_REGION }}
 
-      - name: Test API startup
+      - name: Esperar que Lambda termine de actualizar
         run: |
-          python -m uvicorn api.main:app --host 0.0.0.0 --port 8000 &
-          sleep 3
-          curl -f http://localhost:8000/health
-          echo "✅ API respondiendo"
+          aws lambda wait function-updated \
+            --function-name ${{ env.LAMBDA_NAME }} \
+            --region ${{ env.AWS_REGION }}
+          echo "✅ Lambda actualizada correctamente"
