@@ -2,17 +2,18 @@
 
 Proyecto de MLOps para entrenar, evaluar y servir un modelo de clasificacion que predice fallas de servidor a partir de metricas operativas.
 
-Incluye:
+## Que incluye
+
 - Pipeline de datos y entrenamiento (`src/`)
 - API REST con FastAPI (`api/`)
 - Empaquetado con Docker (`Dockerfile`, `docker-compose.yml`)
 - Variante de inferencia en AWS Lambda (`lambda/`)
-- Workflow de despliegue en GitHub Actions (`.github/workflows/ci.yml`)
+- CI y CD con GitHub Actions (`.github/workflows/ci.yml`, `.github/workflows/cd.yml`)
 
 ## Objetivo
 
 Predecir si un servidor fallara en las proximas horas, entregando:
-- Probabilidad de falla.
+- Probabilidad de falla
 - Nivel de riesgo
 - Tiempo estimado a falla
 - Causas probables
@@ -20,14 +21,14 @@ Predecir si un servidor fallara en las proximas horas, entregando:
 ## Estructura del proyecto
 
 ```text
-api/                # FastAPI app y routers
+api/                # FastAPI app, dependencias y routers
 src/                # Generacion de datos, preprocesamiento, entrenamiento y evaluacion
 data/               # Datasets raw y procesados
 models/             # Artefactos del modelo (no versionados)
-reports/            # Metricas y reportes de evaluacion
+reports/            # Metricas y reportes
 lambda/             # Funcion y contenedor para AWS Lambda
 monitoring/         # Espacio para monitoreo/observabilidad
-tests/              # Pruebas (actualmente vacio)
+tests/              # Tests unitarios del pipeline, predictor y lambda
 ```
 
 ## Stack tecnologico
@@ -37,13 +38,9 @@ tests/              # Pruebas (actualmente vacio)
 - scikit-learn + XGBoost
 - pandas + numpy
 - Docker / Docker Compose
-- AWS Lambda + ECR + S3 (flujo cloud)
+- AWS Lambda + ECR + S3
 
 ## Instalacion local
-
-1. Clonar repositorio.
-2. Crear y activar entorno virtual.
-3. Instalar dependencias.
 
 ```bash
 python -m venv .venv
@@ -55,9 +52,9 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Ejecucion del pipeline ML
+## Flujo ML (entrenamiento y evaluacion)
 
-Orden recomendado desde la raiz del proyecto:
+Ejecuta desde la raiz del proyecto:
 
 ```bash
 python src/generate_data.py
@@ -66,15 +63,16 @@ python src/train.py
 python src/evaluate.py
 ```
 
-Resultados esperados:
+Artefactos generados:
 - `data/raw/server_metrics.csv`
-- `data/processed/X_train.csv`, `X_test.csv`, `y_train.csv`, `y_test.csv`
+- `data/processed/X_train.csv`, `data/processed/X_test.csv`
+- `data/processed/y_train.csv`, `data/processed/y_test.csv`
 - `models/model.pkl`, `models/scaler.pkl`
 - `reports/metrics.json`
 
-## Levantar la API
+## Ejecutar API
 
-### Opcion A: local con Uvicorn
+### Opcion A: Uvicorn (local)
 
 ```bash
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
@@ -86,23 +84,24 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 docker compose up --build
 ```
 
-API disponible en:
+Accesos:
 - Swagger UI: `http://localhost:8000/docs`
-- Health: `http://localhost:8000/health`
+- Healthcheck: `http://localhost:8000/health`
+- Metricas: `http://localhost:8000/metrics`
 
-## Endpoints principales
+## Endpoints
 
 ### `GET /health`
 
-Valida estado del servicio y carga de modelo.
+Valida estado del servicio y carga del modelo.
 
 ### `GET /metrics`
 
-Retorna metricas desde `reports/metrics.json`.
+Retorna metricas almacenadas en `reports/metrics.json`.
 
 ### `POST /predict`
 
-Entrada esperada:
+Request:
 
 ```json
 {
@@ -117,7 +116,7 @@ Entrada esperada:
 }
 ```
 
-Respuesta ejemplo:
+Response ejemplo:
 
 ```json
 {
@@ -130,29 +129,32 @@ Respuesta ejemplo:
 }
 ```
 
-## Despliegue cloud (resumen)
+## Tests
 
-El repositorio contiene un workflow de GitHub Actions en `.github/workflows/ci.yml` que:
-- Construye imagen Docker de `lambda/`
-- Publica en Amazon ECR
-- Actualiza una funcion AWS Lambda basada en imagen
+El proyecto incluye pruebas en:
+- `tests/test_preprocess.py`
+- `tests/test_predict.py`
+- `tests/test_lambda.py`
 
-Importante:
-- Las credenciales AWS se consumen desde `GitHub Secrets`.
-- No incluir claves, tokens ni archivos `.env` en el repositorio.
+Ejecutar tests:
+
+```bash
+pytest tests/ -v
+```
+
+## CI/CD
+
+- `ci.yml`: ejecuta tests en `push` y `pull_request` hacia `main`.
+- `cd.yml`: construye imagen Docker de `lambda/`, publica en ECR y actualiza Lambda cuando hay cambios en `lambda/**`.
 
 ## Seguridad y publicacion responsable
 
 Para evitar filtrar informacion sensible:
 - No publiques secretos (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, tokens, API keys).
 - No subas artefactos pesados o sensibles (`models/*.pkl`, `data/raw/*.csv`, `data/processed/*.csv`).
-- Usa variables de entorno para configuracion de infraestructura (bucket, regiones, nombres de funciones).
-- Revisa logs antes de compartirlos: podrian contener rutas internas o identificadores.
-- Si vas a abrir el repositorio, rota credenciales previamente usadas en pruebas.
-
-## Pruebas
-
-`tests/` existe pero actualmente no contiene pruebas automatizadas.
+- Usa `GitHub Secrets` para credenciales de despliegue.
+- Si publicas logs, revisa que no incluyan IDs internos, rutas privadas o datos operativos sensibles.
+- Antes de abrir el repositorio, rota cualquier credencial usada en entornos de prueba.
 
 ## Licencia
 
