@@ -12,7 +12,7 @@ Incluye:
 ## Objetivo
 
 Predecir si un servidor fallara en las proximas horas, entregando:
-- Probabilidad de falla
+- Probabilidad de falla.
 - Nivel de riesgo
 - Tiempo estimado a falla
 - Causas probables
