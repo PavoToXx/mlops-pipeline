@@ -11,7 +11,9 @@ numpy
 joblib
 
 # MLflow
-mlflow
+# Require a recent mlflow with 'models from code' support
+mlflow>=2.12.2
+skops
 
 # AWS
 boto3

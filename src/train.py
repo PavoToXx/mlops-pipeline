@@ -3,7 +3,8 @@ import numpy as np
 import joblib
 import os
 import mlflow
-import mlflow.sklearn
+from mlflow import sklearn as mlflow_sklearn
+from mlflow.pyfunc.model import PythonModel
 from xgboost import XGBClassifier
 from sklearn.metrics import (
     accuracy_score, precision_score,
@@ -12,7 +13,10 @@ from sklearn.metrics import (
 from mlflow.models.signature import infer_signature
 
 # Opcional: skops para persistencia más segura
-USE_SKOPS = os.getenv("USE_SKOPS", "0") == "1"
+# Aceptar valores '1', 'true', 'yes' (case-insensitive) y mostrar diagnóstico
+USE_SKOPS = os.getenv("USE_SKOPS", "0")
+USE_SKOPS = str(USE_SKOPS).strip().lower() in ("1", "true", "yes")
+print("USE_SKOPS env:", repr(os.getenv("USE_SKOPS")), "=>", USE_SKOPS)
 if USE_SKOPS:
     try:
         import skops.io as skops_io
@@ -143,22 +147,64 @@ if __name__ == "__main__":
 
         # Logueo del modelo en MLflow: intentar usar 'name' si está disponible (nueva API),
         # si no, caer en artifact_path para compatibilidad.
-        try:
-            # Preferimos 'name' en MLflow >= 2.x (si existe)
-            mlflow.sklearn.log_model(sk_model=model, name="model", signature=signature, input_example=input_example)
-        except TypeError:
-            # Fallback para versiones antiguas que usan artifact_path
-            mlflow.sklearn.log_model(sk_model=model, artifact_path="model", signature=signature, input_example=input_example)
+        # Guardar modelo local también (pickle) para compatibilidad con Lambda si lo necesitas
+        os.makedirs("models", exist_ok=True)
+        local_pickle_path = "models/model.pkl"
+        joblib.dump(model, local_pickle_path)
+        print(f"\n✅ Modelo guardado en {local_pickle_path}")
 
-        # Opcional: guardar con skops (serialización más segura) y subir como artifact
+        # Intentar inferir signature y input_example para mejor trazabilidad
+        try:
+            signature = infer_signature(X_train, model.predict_proba(X_train)[:, 1])
+            input_example = X_train.head(1)
+        except Exception:
+            signature = None
+            input_example = None
+
         if USE_SKOPS:
             skops_path = "models/model.skops"
             try:
+                import skops.io as skops_io
                 skops_io.dump(model, skops_path)
-                mlflow.log_artifact(skops_path, artifact_path="model_skops")
-                print(f"✅ Modelo guardado con skops en {skops_path} y subido a MLflow artifacts/model_skops")
+                print(f"✅ Modelo guardado con skops en {skops_path}")
+
+                # Use "models from code" workflow: point python_model to the code file
+                # so MLflow doesn't serialize the instance with cloudpickle.
+                python_model_path = "src/mlflow_models/skops_model_from_code.py"
+
+                log_kwargs = {
+                    "name": "model",
+                    "python_model": python_model_path,
+                    "artifacts": {"skops_model": skops_path},
+                    "pip_requirements": ["scikit-learn", "xgboost", "skops"],
+                }
+                if signature is not None:
+                    log_kwargs["signature"] = signature
+                # Do NOT pass `input_example` here: MLflow will validate the
+                # serving input by loading the model, which can fail for models
+                # containing framework-specific types (xgboost). We keep the
+                # signature but omit input_example to avoid the "Untrusted types" error.
+                mlflow.pyfunc.log_model(**log_kwargs)
+                print("✅ Modelo pyfunc con skops logueado en MLflow (models-from-code)")
+
             except Exception as e:
-                print("⚠️ Error guardando con skops:", e)
+                print("⚠️ Error guardando/logueando con skops:", e)
+                # Fallback: loguear con mlflow.sklearn (provocará la advertencia sobre pickle)
+                try:
+                    mlflow.sklearn.log_model(sk_model=model, name="model", signature=signature)
+                    print("✅ Fallback: modelo sklearn logueado en MLflow")
+                except Exception as e2:
+                    print("⚠️ Fallback logging failed:", e2)
+        else:
+            # Comportamiento previo: log del sklearn model (esto dispara la advertencia de pickle)
+            try:
+                try:
+                    mlflow.sklearn.log_model(sk_model=model, name="model", signature=signature, input_example=input_example)
+                except TypeError:
+                    mlflow.sklearn.log_model(sk_model=model, artifact_path="model", signature=signature, input_example=input_example)
+                print("✅ Modelo sklearn logueado en MLflow")
+            except Exception as e:
+                print("⚠️ Error logueando sklearn model en MLflow:", e)
 
         run_id = run.info.run_id
         print(f"\n✅ MLflow run finished: {run_id}")
