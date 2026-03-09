@@ -16,10 +16,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      # Extraemos la versión del archivo para usarla en el CI
+      - name: Read python version
+        id: py-version
+        run: echo "VERSION=$(cat .python-version)" >> $GITHUB_OUTPUT
+
+      - name: Configurar Python {requirements.txt/PYTHON_VERSION}
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ steps.py-version.outputs.VERSION }}
 
       - name: Install deps
         run: |

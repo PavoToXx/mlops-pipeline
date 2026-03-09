@@ -1,19 +1,23 @@
-FROM python:3.12-slim
+# Definimos el argumento con un valor por defecto
+ARG PYTHON_VER = "3.13"
 
+
+# Usamos la variable para traer la imagen
+FROM python:${PYTHON_VER}-slim
+
+RUN ECHO"Usando Python version: ${PYTHON_VER}"
+
+# Instalamos uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Copiamos la definición de versión al contenedor
+COPY .python-version /app/
 WORKDIR /app
 
 COPY requirements.txt .
 
-# Solo instala lo necesario para la API
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn \
-    xgboost \
-    scikit-learn \
-    pandas \
-    numpy \
-    joblib \
-    pydantic
+# Instala dependencias centralizadas desde requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/       ./src/
 COPY api/       ./api/

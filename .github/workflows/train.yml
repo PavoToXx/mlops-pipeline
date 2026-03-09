@@ -14,7 +14,6 @@ on:
       - 'data/**'
 
 env:
-  PYTHON_VERSION: '3.14'
   MIN_F1_SCORE: 0.85
 
 jobs:
@@ -33,10 +32,20 @@ jobs:
       - name: Checkout código
         uses: actions/checkout@v4
 
-      - name: Configurar Python ${{ env.PYTHON_VERSION }}
+      # Extraemos la versión del archivo para usarla en el CI
+      - name: Read python version
+        id: py-version
+        run: echo "VERSION=$(cat .python-version)" >> $GITHUB_OUTPUT
+
+      - name: Configurar Python {requirements.txt/PYTHON_VERSION}
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          python-version: ${{ steps.py-version.outputs.VERSION }}
+
+      - name: Configurar Python ${{ steps.py-version.outputs.VERSIONN }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ steps.py-version.outputs.VERSION }}
           cache: 'pip'
 
       - name: Instalar dependencias
