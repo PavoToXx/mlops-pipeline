@@ -1,5 +1,7 @@
 FROM public.ecr.aws/lambda/python:3.14
 
+RUN apt-get update && apt-get install -y build-essential
+
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
         "numpy==1.26.4" \
