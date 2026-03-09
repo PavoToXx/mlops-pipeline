@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'lambda/**'
+      - 'lambda_folder/**'
       - '.github/workflows/cd.yml'
 
 env:
@@ -46,7 +46,7 @@ jobs:
             --output type=docker \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
-            lambda/
+            lambda_folder/
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
