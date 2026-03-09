@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 from dataclasses import dataclass
+import warnings
 
 FEATURE_COLS = [
     'cpu_usage', 'ram_usage', 'disk_io',
@@ -41,6 +42,10 @@ class FailurePredictor:
             raise FileNotFoundError(f"Modelo no encontrado: {self.model_path}")
         if not os.path.exists(self.scaler_path):
             raise FileNotFoundError(f"Scaler no encontrado: {self.scaler_path}")
+        # Suppress sklearn InconsistentVersionWarning when loading older-serialized estimators
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Trying to unpickle estimator StandardScaler from version .* when using version .*")
         self.model  = joblib.load(self.model_path)
         self.scaler = joblib.load(self.scaler_path)
         print(f"✅ Modelo cargado: {self.model_path}")

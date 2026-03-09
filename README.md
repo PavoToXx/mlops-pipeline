@@ -59,6 +59,8 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+
+Note: This project has been tested with Python 3.14 for the Lambda container. If you run the Lambda container locally, the `lambda_folder/Dockerfile` uses Python 3.14. Local development and tests run under your venv Python (3.11+ is supported), but ensure `scikit-learn` and `cloudpickle` versions match the model serialization to avoid deserialization warnings.
 ```
 
 ## Flujo ML (entrenamiento y evaluacion)
@@ -170,6 +172,19 @@ pytest tests/ -v
 
 # Con coverage
 pytest tests/ --cov=api --cov=src --cov=lambda -v
+
+Tips for running tests and Lambda locally:
+
+- The tests mock AWS where needed; to run Lambda handler manually use `invoke_lambda_local.py` at project root which calls `lambda_folder.lambda_function.lambda_handler` and will load local `models/model.pkl` and `models/scaler.pkl` if present.
+- To build the Lambda container (uses Python 3.14):
+
+```bash
+docker build -t ml-lambda:local lambda_folder
+docker run --rm -v $(pwd):/var/task -w /var/task ml-lambda:local \
+  python -c "from lambda_folder import lambda_function as lf; print(lf.lambda_handler({'body': {'cpu_usage':50,'ram_usage':60,'temperature':70,'disk_io':30,'network_traffic':100,'cpu_spike_count':1,'ram_spike_count':0,'uptime_hours':10}}, None))"
+```
+
+- If you see `InconsistentVersionWarning` when loading models, either align `scikit-learn` versions between training and serving (recommended), or reserialize the model with the target sklearn version. Tests suppress this warning during loading.
 ```
 
 ## CI/CD
