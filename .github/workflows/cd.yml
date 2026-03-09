@@ -47,9 +47,11 @@ jobs:
             --platform linux/amd64 \
             --provenance=false \
             --output type=docker \
+            --build-arg PYTHON_VERSION=$(cat .python-version) \
+            -f lambda_folder/Dockerfile \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
             -t $ECR_REGISTRY/$ECR_REPOSITORY:latest \
-            lambda_folder/
+            .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
           echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
