@@ -1,5 +1,4 @@
 import joblib
-import numpy as np
 import pandas as pd
 import os
 from dataclasses import dataclass
@@ -120,6 +119,9 @@ class FailurePredictor:
         # Ensure model and scaler are loaded before predicting
         if self.model is None or self.scaler is None:
             self._load()
+
+        # For static type checkers: guarantee these are not None beyond this point
+        assert self.model is not None and self.scaler is not None, "Modelo o scaler no cargado"
 
         df        = self._build_features(raw)
         df_scaled = pd.DataFrame(
