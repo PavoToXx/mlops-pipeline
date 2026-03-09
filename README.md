@@ -257,6 +257,27 @@ pytest tests/ -v
 python invoke_lambda_local.py
 ```
 
+### Probar integraciones con artefactos reales (CI)
+
+Si quieres ejecutar tests de integración que usan los artefactos reales del modelo, tienes dos opciones:
+
+- Proveer archivos dummy locales en `models/` antes de ejecutar `pytest` (útil en entornos sin acceso a S3):
+
+```bash
+mkdir -p models
+# crear archivos vacíos o serializados compatibles con joblib
+touch models/model.pkl
+touch models/scaler.pkl
+pytest tests/ -v
+```
+
+- O permitir que el job de CI descargue los artefactos desde S3. En GitHub Actions puedes activar esto estableciendo variables de entorno en el workflow (o en la interfaz de Actions):
+
+- Paso 1: Añade secretos en el repositorio (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
+- Paso 2: Habilita la descarga de artefactos fijando `RUN_INTEGRATION_TESTS=true` en el job del workflow (`.github/workflows/ci.yml`). El workflow descargará `models/model.pkl` y `models/scaler.pkl` desde el bucket configurado antes de ejecutar `pytest`.
+
+Nota: Si activas la descarga en CI asegúrate de que las credenciales usadas tengan permiso `s3:GetObject` sobre las claves indicadas.
+
 Componentes de monitoreo:
 - **Alarmas**: Latencia alta, errores, predicciones criticas, throttles
 - **Dashboard**: Metricas visuales de predicciones, latencia, errores
