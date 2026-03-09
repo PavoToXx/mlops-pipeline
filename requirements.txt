@@ -3,12 +3,14 @@ fastapi
 uvicorn
 pydantic
 
-# ML
-scikit-learn
-xgboost
-pandas
-numpy
-joblib
+# ML (pinned to match Lambda image and CI)
+numpy==1.26.4
+scipy==1.13.1
+scikit-learn==1.8.0
+xgboost==2.1.3
+pandas==2.2.3
+joblib==1.4.2
+cloudpickle
 
 # MLflow
 # Require a recent mlflow with 'models from code' support

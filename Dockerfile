@@ -4,16 +4,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-# Solo instala lo necesario para la API
-RUN pip install --no-cache-dir \
-    fastapi \
-    uvicorn \
-    xgboost \
-    scikit-learn \
-    pandas \
-    numpy \
-    joblib \
-    pydantic
+# Instala dependencias centralizadas desde requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/       ./src/
 COPY api/       ./api/
