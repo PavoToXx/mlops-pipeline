@@ -215,6 +215,48 @@ python monitoring/setup_cloudwatch.py
 python monitoring/setup_cloudwatch.py --function-name tu-lambda --sns-topic arn:aws:sns:...
 ```
 
+### Local CloudWatch / metrics
+
+Cuando se ejecuta el código en local el proceso puede tener credenciales AWS presentes pero sin permisos para `cloudwatch:PutMetricData`, lo que genera warnings `AccessDenied` en logs. Para evitar esto el código detecta entornos locales y omite las llamadas a CloudWatch por defecto.
+
+- Forzar envío de métricas a CloudWatch en local (no recomendado salvo que tu identidad tenga permisos): exporta la variable de entorno `FORCE_CLOUDWATCH=true` antes de ejecutar.
+
+Ejemplo (PowerShell):
+
+```powershell
+$Env:FORCE_CLOUDWATCH = 'true'
+python .\invoke_lambda_local.py
+```
+
+Ejemplo (Linux/macOS):
+
+```bash
+export FORCE_CLOUDWATCH=true
+python invoke_lambda_local.py
+```
+
+Si no estableces `FORCE_CLOUDWATCH`, el servicio seguirá publicando logs estructurados y subiendo predicciones a S3 (si está configurado), pero no llamará a CloudWatch, evitando errores `AccessDenied` durante desarrollo.
+
+### Ejecutar tests localmente (comandos recomendados)
+
+```bash
+# Crear y activar venv
+python -m venv .venv
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+# Linux/macOS
+source .venv/bin/activate
+
+# Instalar dependencias (usado por CI)
+pip install -r requirements.txt
+
+# Correr tests
+pytest tests/ -v
+
+# Invocar Lambda handler localmente
+python invoke_lambda_local.py
+```
+
 Componentes de monitoreo:
 - **Alarmas**: Latencia alta, errores, predicciones criticas, throttles
 - **Dashboard**: Metricas visuales de predicciones, latencia, errores
