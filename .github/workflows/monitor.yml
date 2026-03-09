@@ -1,0 +1,38 @@
+name: Model quality monitor
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # todos los días a 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install boto3
+
+      - name: Run monitor
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          PREDICTIONS_S3_BUCKET: ${{ secrets.PREDICTIONS_S3_BUCKET }}
+          PREDICTIONS_S3_PREFIX: ${{ secrets.PREDICTIONS_S3_PREFIX }}
+          MONITOR_PCT_DROP_THRESHOLD: "0.10"
+        run: |
+          python scripts/monitor_quality.py

@@ -3,13 +3,12 @@ import os
 import json
 import pytest
 import numpy as np
+from lambda_folder import lambda_function as lf
 from unittest.mock import patch, MagicMock
 
 # Mock boto3 before importing lambda_function so the import succeeds without AWS
 sys.modules['boto3'] = MagicMock()
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'lambda'))
-import lambda_function as lf
 
 FEATURE_COLS = lf.FEATURE_COLS
 

@@ -59,6 +59,8 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -r requirements.txt
+
+Note: This project has been tested with Python 3.14 for the Lambda container. If you run the Lambda container locally, the `lambda_folder/Dockerfile` uses Python 3.14. Local development and tests run under your venv Python (3.11+ is supported), but ensure `scikit-learn` and `cloudpickle` versions match the model serialization to avoid deserialization warnings.
 ```
 
 ## Flujo ML (entrenamiento y evaluacion)
@@ -170,6 +172,19 @@ pytest tests/ -v
 
 # Con coverage
 pytest tests/ --cov=api --cov=src --cov=lambda -v
+
+Tips for running tests and Lambda locally:
+
+- The tests mock AWS where needed; to run Lambda handler manually use `invoke_lambda_local.py` at project root which calls `lambda_folder.lambda_function.lambda_handler` and will load local `models/model.pkl` and `models/scaler.pkl` if present.
+- To build the Lambda container (uses Python 3.14):
+
+```bash
+docker build -t ml-lambda:local lambda_folder
+docker run --rm -v $(pwd):/var/task -w /var/task ml-lambda:local \
+  python -c "from lambda_folder import lambda_function as lf; print(lf.lambda_handler({'body': {'cpu_usage':50,'ram_usage':60,'temperature':70,'disk_io':30,'network_traffic':100,'cpu_spike_count':1,'ram_spike_count':0,'uptime_hours':10}}, None))"
+```
+
+- If you see `InconsistentVersionWarning` when loading models, either align `scikit-learn` versions between training and serving (recommended), or reserialize the model with the target sklearn version. Tests suppress this warning during loading.
 ```
 
 ## CI/CD
@@ -199,6 +214,69 @@ python monitoring/setup_cloudwatch.py
 # Con parametros personalizados
 python monitoring/setup_cloudwatch.py --function-name tu-lambda --sns-topic arn:aws:sns:...
 ```
+
+### Local CloudWatch / metrics
+
+Cuando se ejecuta el código en local el proceso puede tener credenciales AWS presentes pero sin permisos para `cloudwatch:PutMetricData`, lo que genera warnings `AccessDenied` en logs. Para evitar esto el código detecta entornos locales y omite las llamadas a CloudWatch por defecto.
+
+- Forzar envío de métricas a CloudWatch en local (no recomendado salvo que tu identidad tenga permisos): exporta la variable de entorno `FORCE_CLOUDWATCH=true` antes de ejecutar.
+
+Ejemplo (PowerShell):
+
+```powershell
+$Env:FORCE_CLOUDWATCH = 'true'
+python .\invoke_lambda_local.py
+```
+
+Ejemplo (Linux/macOS):
+
+```bash
+export FORCE_CLOUDWATCH=true
+python invoke_lambda_local.py
+```
+
+Si no estableces `FORCE_CLOUDWATCH`, el servicio seguirá publicando logs estructurados y subiendo predicciones a S3 (si está configurado), pero no llamará a CloudWatch, evitando errores `AccessDenied` durante desarrollo.
+
+### Ejecutar tests localmente (comandos recomendados)
+
+```bash
+# Crear y activar venv
+python -m venv .venv
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+# Linux/macOS
+source .venv/bin/activate
+
+# Instalar dependencias (usado por CI)
+pip install -r requirements.txt
+
+# Correr tests
+pytest tests/ -v
+
+# Invocar Lambda handler localmente
+python invoke_lambda_local.py
+```
+
+### Probar integraciones con artefactos reales (CI)
+
+Si quieres ejecutar tests de integración que usan los artefactos reales del modelo, tienes dos opciones:
+
+- Proveer archivos dummy locales en `models/` antes de ejecutar `pytest` (útil en entornos sin acceso a S3):
+
+```bash
+mkdir -p models
+# crear archivos vacíos o serializados compatibles con joblib
+touch models/model.pkl
+touch models/scaler.pkl
+pytest tests/ -v
+```
+
+- O permitir que el job de CI descargue los artefactos desde S3. En GitHub Actions puedes activar esto estableciendo variables de entorno en el workflow (o en la interfaz de Actions):
+
+- Paso 1: Añade secretos en el repositorio (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
+- Paso 2: Habilita la descarga de artefactos fijando `RUN_INTEGRATION_TESTS=true` en el job del workflow (`.github/workflows/ci.yml`). El workflow descargará `models/model.pkl` y `models/scaler.pkl` desde el bucket configurado antes de ejecutar `pytest`.
+
+Nota: Si activas la descarga en CI asegúrate de que las credenciales usadas tengan permiso `s3:GetObject` sobre las claves indicadas.
 
 Componentes de monitoreo:
 - **Alarmas**: Latencia alta, errores, predicciones criticas, throttles

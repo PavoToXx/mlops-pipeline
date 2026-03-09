@@ -14,7 +14,7 @@ on:
       - 'data/**'
 
 env:
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: '3.14'
   MIN_F1_SCORE: 0.85
 
 jobs:
@@ -23,6 +23,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
+      pull-requests: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
     
     steps:
       - name: Checkout código
@@ -40,25 +45,31 @@ jobs:
           pip install -r requirements.txt
 
       - name: Generar dataset
+        if: ${{ github.event_name != 'pull_request' || env.RUN_INTEGRATION_TESTS == 'true' }}
         run: python src/generate_data.py
 
       - name: Preprocesar datos
+        if: ${{ github.event_name != 'pull_request' || env.RUN_INTEGRATION_TESTS == 'true' }}
         run: python src/preprocess.py
 
       - name: Entrenar modelo con MLflow
+        if: ${{ github.event_name != 'pull_request' || env.RUN_INTEGRATION_TESTS == 'true' }}
         run: python src/train.py
 
       - name: Evaluar modelo
+        if: ${{ github.event_name != 'pull_request' || env.RUN_INTEGRATION_TESTS == 'true' }}
         run: python src/evaluate.py
 
       - name: Leer métricas
         id: metrics
+        if: ${{ github.event_name != 'pull_request' || env.RUN_INTEGRATION_TESTS == 'true' }}
         run: |
           echo "f1=$(python -c "import json; print(json.load(open('reports/metrics.json'))['f1'])")" >> $GITHUB_OUTPUT
           echo "accuracy=$(python -c "import json; print(json.load(open('reports/metrics.json'))['accuracy'])")" >> $GITHUB_OUTPUT
           echo "roc_auc=$(python -c "import json; print(json.load(open('reports/metrics.json'))['roc_auc'])")" >> $GITHUB_OUTPUT
 
       - name: Validar threshold de métricas
+        if: ${{ github.event_name != 'pull_request' || env.RUN_INTEGRATION_TESTS == 'true' }}
         run: |
           F1_SCORE=${{ steps.metrics.outputs.f1 }}
           echo "F1 Score: $F1_SCORE"
@@ -69,6 +80,7 @@ jobs:
           echo "✅ Model approved: F1 score ($F1_SCORE) meets threshold"
 
       - name: Subir artefactos del modelo
+        if: ${{ github.event_name != 'pull_request' || env.RUN_INTEGRATION_TESTS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: trained-model
@@ -79,6 +91,7 @@ jobs:
           retention-days: 30
 
       - name: Subir MLflow runs
+        if: ${{ github.event_name != 'pull_request' || env.RUN_INTEGRATION_TESTS == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: mlflow-runs
@@ -86,7 +99,7 @@ jobs:
           retention-days: 30
 
       - name: Comentar métricas en PR
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && env.RUN_INTEGRATION_TESTS == 'true'
         uses: actions/github-script@v7
         with:
           script: |

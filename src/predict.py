@@ -1,8 +1,8 @@
 import joblib
-import numpy as np
 import pandas as pd
 import os
 from dataclasses import dataclass
+import warnings
 
 FEATURE_COLS = [
     'cpu_usage', 'ram_usage', 'disk_io',
@@ -27,20 +27,38 @@ class FailurePredictor:
         self,
         model_path:  str = "models/model.pkl",
         scaler_path: str = "models/scaler.pkl",
-        version:     str = "v1.0.0"
+        version:     str = "v1.0.0",
+        load_on_init: bool = True
     ):
         self.model_path    = model_path
         self.scaler_path   = scaler_path
         self.model_version = version
         self.model  = None
         self.scaler = None
-        self._load()
+        # By default, load_on_init preserves previous behaviour for tests
+        # that expect immediate loading. When set to False the predictor
+        # will be created without attempting to read files (useful for
+        # app import time or CI environments where a model lives in S3).
+        self.load_on_init = load_on_init
+        # Do not automatically call _load here; tests or callers may request
+        # immediate load by passing load_on_init=False to skip, or True to load.
+        # Backwards-compatible default: load on init.
+        if self.load_on_init:
+            try:
+                self._load()
+            except Exception:
+                # Re-raise to preserve prior behaviour when load_on_init=True
+                raise
 
     def _load(self):
         if not os.path.exists(self.model_path):
             raise FileNotFoundError(f"Modelo no encontrado: {self.model_path}")
         if not os.path.exists(self.scaler_path):
             raise FileNotFoundError(f"Scaler no encontrado: {self.scaler_path}")
+        # Suppress sklearn InconsistentVersionWarning when loading older-serialized estimators
+        warnings.filterwarnings(
+            "ignore",
+            message=r"Trying to unpickle estimator StandardScaler from version .* when using version .*")
         self.model  = joblib.load(self.model_path)
         self.scaler = joblib.load(self.scaler_path)
         print(f"✅ Modelo cargado: {self.model_path}")
@@ -98,6 +116,13 @@ class FailurePredictor:
         return causes if causes else ["no_critical_indicators"]
 
     def predict(self, raw: dict) -> PredictionResult:
+        # Ensure model and scaler are loaded before predicting
+        if self.model is None or self.scaler is None:
+            self._load()
+
+        # For static type checkers: guarantee these are not None beyond this point
+        assert self.model is not None and self.scaler is not None, "Modelo o scaler no cargado"
+
         df        = self._build_features(raw)
         df_scaled = pd.DataFrame(
             self.scaler.transform(df), columns=FEATURE_COLS
