@@ -14,7 +14,7 @@ on:
       - 'data/**'
 
 env:
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: '3.14'
   MIN_F1_SCORE: 0.85
 
 jobs:
@@ -43,6 +43,21 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Smoke-check: XGBoost import and tiny train
+        run: |
+          python - <<'PY'
+          import xgboost as xgb
+          import numpy as np
+          from xgboost import XGBClassifier
+          print('xgboost version:', xgb.__version__)
+          # tiny dataset to validate that XGBoost functions
+          X = np.random.rand(20, 5)
+          y = np.random.randint(0, 2, size=20)
+          model = XGBClassifier(n_estimators=5, use_label_encoder=False, eval_metric='logloss')
+          model.fit(X, y)
+          print('XGBoost smoke train OK')
+          PY
 
       - name: Generar dataset
         if: ${{ github.event_name != 'pull_request' || env.RUN_INTEGRATION_TESTS == 'true' }}
