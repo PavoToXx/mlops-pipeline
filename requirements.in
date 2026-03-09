@@ -1,0 +1,26 @@
+# API (Pydantic V2 es mandatorio en 2026)
+fastapi>=0.110.0
+uvicorn[standard]
+pydantic>=2.0.0
+
+# ML (Cuidado con Numpy 2.0, mejor dejarlo fluir)
+numpy>=2.0.0
+scipy
+scikit-learn
+xgboost
+pandas>=2.2.0
+joblib
+cloudpickle
+
+# MLflow & Serialization
+mlflow>=2.10.0
+skops
+
+# AWS
+boto3
+sagemaker
+
+# Tests & Utils
+pytest
+httpx
+python-dotenv
