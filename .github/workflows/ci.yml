@@ -23,7 +23,7 @@ jobs:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        run: pip install pytest pandas numpy scikit-learn xgboost==2.1.3 joblib
+        run: pip install -r requirements.txt
 
       - name: Correr tests
         run: pytest tests/ -v
