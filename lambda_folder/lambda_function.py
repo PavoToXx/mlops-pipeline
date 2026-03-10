@@ -24,7 +24,7 @@ PREDICTIONS_S3_PREFIX = os.getenv("PREDICTIONS_S3_PREFIX", "predictions")
 # Default model version (override in env if you version your models)
 MODEL_VERSION = os.getenv("MODEL_VERSION", "v1")
 
-# Features con las que se entrenó el modelo (deben coincidir con preprocess.py)
+# Features con las que se entrena el modelo (deben coincidir con preprocess.py)
 MODEL_FEATURE_COLS = [
     'cpu_usage', 'ram_usage', 'disk_io',
     'network_traffic', 'temperature',
@@ -32,14 +32,10 @@ MODEL_FEATURE_COLS = [
     'uptime_hours',
     'cpu_ram_ratio', 'thermal_pressure',
     'spike_total', 'io_network_ratio',
-]
-
-# Features extra solo para logging/explicabilidad (no van al modelo)
-EXPLAIN_FEATURE_COLS = MODEL_FEATURE_COLS + [
     'risk_score', 'cpu_critical', 'ram_critical', 'temp_critical', 'multi_critical'
 ]
 
-FEATURE_COLS = EXPLAIN_FEATURE_COLS  # mantiene compatibilidad con tests actuales
+FEATURE_COLS = MODEL_FEATURE_COLS
 
 # -----------------------
 # Logging

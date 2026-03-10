@@ -6,17 +6,21 @@ import joblib
 import os
 
 # ── Features para ENTRENAR el modelo ──────────────────────────────────
-# Solo métricas raw + features físicamente interpretables
-# SIN risk_score ni multi_critical (evitan que el modelo haga trampa)
+# Hotfix: alinear exactamente las columnas con serving (Lambda)
 TRAIN_FEATURES = [
     'cpu_usage', 'ram_usage', 'disk_io',
     'network_traffic', 'temperature',
     'cpu_spike_count', 'ram_spike_count',
     'uptime_hours',
-    'cpu_ram_ratio',       # ratio físico
-    'thermal_pressure',    # física real: temp * cpu
-    'spike_total',         # suma simple
-    'io_network_ratio',    # ratio físico
+    'cpu_ram_ratio',
+    'thermal_pressure',
+    'spike_total',
+    'io_network_ratio',
+    'risk_score',
+    'cpu_critical',
+    'ram_critical',
+    'temp_critical',
+    'multi_critical',
 ]
 
 def load_data(path: str = "data/raw/server_metrics.csv") -> pd.DataFrame:
@@ -36,8 +40,8 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
     df['spike_total']      = df['cpu_spike_count'] + df['ram_spike_count']
     df['io_network_ratio'] = df['disk_io'] / (df['network_traffic'] + 1)
 
-    # Estos se calculan pero NO van al modelo
-    # Se usan solo en la API para explicabilidad
+    # Estas features también entran al modelo para mantener compatibilidad
+    # con los artefactos consumidos en Lambda.
     df['risk_score']    = (
         df['cpu_usage']  * 0.30 +
         df['ram_usage']  * 0.25 +
@@ -54,12 +58,10 @@ def feature_engineering(df: pd.DataFrame) -> pd.DataFrame:
 
     print(f"✅ Features calculados")
     print(f"   Para entrenamiento: {TRAIN_FEATURES}")
-    print(f"   Solo API (excluidos del modelo): "
-          f"risk_score, multi_critical, *_critical")
     return df
 
 def split_and_scale(df: pd.DataFrame):
-    X = df[TRAIN_FEATURES]   # ← solo los 12 features limpios
+    X = df[TRAIN_FEATURES]
     y = df['failure']
 
     X_train, X_test, y_train, y_test = train_test_split(
