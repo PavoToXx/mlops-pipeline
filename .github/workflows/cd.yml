@@ -77,77 +77,78 @@ jobs:
             --region ${{ env.AWS_REGION }}
           echo "✅ Lambda actualizada correctamente"
           
-      - name: Ensure Lambda Function URL exists and expose it
-        run: |
-          set -e
-          EXISTING=$(aws lambda get-function-url-config \
-            --function-name ${{ env.LAMBDA_NAME }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'FunctionUrl' --output text 2>/dev/null || echo "NONE")
-          if [ "$EXISTING" = "NONE" ]; then
-            echo "Creating Lambda Function URL..."
-            aws lambda add-permission \
-              --function-name ${{ env.LAMBDA_NAME }} \
-              --statement-id FunctionURLAllowPublicAccess \
-              --action lambda:InvokeFunctionUrl \
-              --principal "*" \
-              --function-url-auth-type NONE \
-              --region ${{ env.AWS_REGION }} || true
+      # - name: Ensure Lambda Function URL exists and expose it
+      #   run: |
+      #     set -e
+      #     EXISTING=$(aws lambda get-function-url-config \
+      #       --function-name ${{ env.LAMBDA_NAME }} \
+      #       --region ${{ env.AWS_REGION }} \
+      #       --query 'FunctionUrl' --output text 2>/dev/null || echo "NONE")
+      #     if [ "$EXISTING" = "NONE" ]; then
+      #       echo "Creating Lambda Function URL..."
+      #       aws lambda add-permission \
+      #         --function-name ${{ env.LAMBDA_NAME }} \
+      #         --statement-id FunctionURLAllowPublicAccess \
+      #         --action lambda:InvokeFunctionUrl \
+      #         --principal "*" \
+      #         --function-url-auth-type NONE \
+      #         --region ${{ env.AWS_REGION }} || true
 
-            aws lambda create-function-url-config \
-              --function-name ${{ env.LAMBDA_NAME }} \
-              --auth-type NONE \
-              --cors '{"AllowOrigins":["*"],"AllowMethods":["POST","GET"],"AllowHeaders":["*"]}' \
-              --region ${{ env.AWS_REGION }}
-          fi
+      #       aws lambda create-function-url-config \
+      #         --function-name ${{ env.LAMBDA_NAME }} \
+      #         --auth-type NONE \
+      #         --cors '{"AllowOrigins":["*"],"AllowMethods":["POST","GET"],"AllowHeaders":["*"]}' \
+      #         --region ${{ env.AWS_REGION }}
+      #     fi
 
-          URL=$(aws lambda get-function-url-config \
-            --function-name ${{ env.LAMBDA_NAME }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'FunctionUrl' --output text)
+      #     URL=$(aws lambda get-function-url-config \
+      #       --function-name ${{ env.LAMBDA_NAME }} \
+      #       --region ${{ env.AWS_REGION }} \
+      #       --query 'FunctionUrl' --output text)
 
-          echo "LAMBDA_URL=$URL" >> $GITHUB_ENV
-          echo "🌐 Lambda Function URL: $URL"
-      - name: Habilitar Lambda Function URL (si no existe)
-        run: |
-          # Verificar si ya existe la Function URL
-          EXISTING=$(aws lambda get-function-url-config \
-            --function-name ${{ env.LAMBDA_NAME }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'FunctionUrl' --output text 2>/dev/null || echo "NONE")
+      #     echo "LAMBDA_URL=$URL" >> $GITHUB_ENV
+      #     echo "🌐 Lambda Function URL: $URL"
 
-          if [ "$EXISTING" = "NONE" ]; then
-            echo "Creando Lambda Function URL..."
-            aws lambda add-permission \
-              --function-name ${{ env.LAMBDA_NAME }} \
-              --statement-id FunctionURLAllowPublicAccess \
-              --action lambda:InvokeFunctionUrl \
-              --principal "*" \
-              --function-url-auth-type NONE \
-              --region ${{ env.AWS_REGION }} 2>/dev/null || true
+      # - name: Habilitar Lambda Function URL (si no existe)
+      #   run: |
+      #     # Verificar si ya existe la Function URL
+      #     EXISTING=$(aws lambda get-function-url-config \
+      #       --function-name ${{ env.LAMBDA_NAME }} \
+      #       --region ${{ env.AWS_REGION }} \
+      #       --query 'FunctionUrl' --output text 2>/dev/null || echo "NONE")
 
-            aws lambda create-function-url-config \
-              --function-name ${{ env.LAMBDA_NAME }} \
-              --auth-type NONE \
-              --cors '{"AllowOrigins":["*"],"AllowMethods":["POST","GET"],"AllowHeaders":["*"]}' \
-              --region ${{ env.AWS_REGION }}
-          fi
+      #     if [ "$EXISTING" = "NONE" ]; then
+      #       echo "Creando Lambda Function URL..."
+      #       aws lambda add-permission \
+      #         --function-name ${{ env.LAMBDA_NAME }} \
+      #         --statement-id FunctionURLAllowPublicAccess \
+      #         --action lambda:InvokeFunctionUrl \
+      #         --principal "*" \
+      #         --function-url-auth-type NONE \
+      #         --region ${{ env.AWS_REGION }} 2>/dev/null || true
 
-          URL=$(aws lambda get-function-url-config \
-            --function-name ${{ env.LAMBDA_NAME }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'FunctionUrl' --output text)
+      #       aws lambda create-function-url-config \
+      #         --function-name ${{ env.LAMBDA_NAME }} \
+      #         --auth-type NONE \
+      #         --cors '{"AllowOrigins":["*"],"AllowMethods":["POST","GET"],"AllowHeaders":["*"]}' \
+      #         --region ${{ env.AWS_REGION }}
+      #     fi
 
-          echo "LAMBDA_URL=$URL" >> $GITHUB_ENV
-          echo "🌐 Lambda Function URL: $URL"
+      #     URL=$(aws lambda get-function-url-config \
+      #       --function-name ${{ env.LAMBDA_NAME }} \
+      #       --region ${{ env.AWS_REGION }} \
+      #       --query 'FunctionUrl' --output text)
 
-      - name: (Opcional) Crear/actualizar CloudFront
-        run: |
-          # CloudFront en frente de Lambda URL añade: cache, SSL custom domain, WAF, geo-blocking
-          # Para un proyecto MLOps básico, la Lambda Function URL ya tiene HTTPS nativo.
-          # Añadir CloudFront si necesitas dominio propio o cache de respuestas.
-          echo "Lambda URL directa: $LAMBDA_URL"
-          echo "Para CloudFront, ver infra/setup_cloudfront.sh"
+      #     echo "LAMBDA_URL=$URL" >> $GITHUB_ENV
+      #     echo "🌐 Lambda Function URL: $URL"
+
+      # - name: (Opcional) Crear/actualizar CloudFront
+      #   run: |
+      #     # CloudFront en frente de Lambda URL añade: cache, SSL custom domain, WAF, geo-blocking
+      #     # Para un proyecto MLOps básico, la Lambda Function URL ya tiene HTTPS nativo.
+      #     # Añadir CloudFront si necesitas dominio propio o cache de respuestas.
+      #     echo "Lambda URL directa: $LAMBDA_URL"
+      #     echo "Para CloudFront, ver infra/setup_cloudfront.sh"
 
       - name: Resumen del deploy
         run: |
