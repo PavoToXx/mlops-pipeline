@@ -371,8 +371,9 @@ def lambda_handler(event, context):
         # XGBoost Booster (JSON format) uses different API than sklearn
         if hasattr(model, 'predict'):
             # sklearn-compatible model (pickle)
+            proba = model.predict_proba(df_scaled)[0] # type: ignore
+            probability = round(float(proba[1]), 4)  # Probability for class '1'
             will_fail = bool(model.predict(df_scaled)[0])
-            probability = round(float(model.predict(df_scaled)[0][1]), 4)
         else:
             # XGBoost Booster (JSON format)
             import xgboost as xgb
@@ -380,6 +381,7 @@ def lambda_handler(event, context):
             proba = model.predict(dmatrix)[0]
             probability = round(float(proba), 4)
             will_fail = bool(proba >= 0.5)
+            
         risk_level = get_risk_level(probability)
 
         latency = time.time() - start_time
