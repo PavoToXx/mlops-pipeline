@@ -14,15 +14,15 @@ COPY .python-version /tmp/
 # Instalamos herramientas de compilación
 RUN microdnf install -y gcc gcc-c++ make && microdnf clean all || true
 
-# Copiamos los requisitos
-COPY requirements.txt /tmp/requirements.txt
+# Copiamos solo requisitos de inferencia para Lambda
+COPY lambda_folder/requirements.lambda.txt /tmp/requirements.lambda.txt
 
-# Instalamos usando la versión leída del archivo y uv (altamente recomendado en lugar de pip)
-# Instalar uv es extremadamente rápido y evita conflictos de resolución
+# Instalamos solo dependencias runtime mínimas para reducir tamaño/latencia
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir uv && \
-    uv pip install --system -r /tmp/requirements.txt
+    uv pip install --system -r /tmp/requirements.lambda.txt && \
+    pip cache purge
 
-COPY  lambda_folder/lambda_function.py ${LAMBDA_TASK_ROOT}
+COPY lambda_folder/lambda_function.py ${LAMBDA_TASK_ROOT}
 
 CMD ["lambda_function.lambda_handler"]

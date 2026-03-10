@@ -1,9 +1,13 @@
 import json
 import boto3
+import os
+
+# Avoid joblib multiprocessing warning/noise in Lambda runtime.
+os.environ["JOBLIB_MULTIPROCESSING"] = "0"
+
 import joblib
 import numpy as np
 import pandas as pd
-import os
 import tempfile
 import logging
 import time
@@ -150,7 +154,7 @@ def load_models():
             "event": "model_cache_hit",
             "timestamp": datetime.now(timezone.utc).isoformat()
         }))
-        return
+        return model, scaler
 
     start_time = time.time()
     tmp = tempfile.gettempdir()
@@ -205,6 +209,7 @@ def load_models():
         }))
 
         log_metric('ModelLoadTime', load_time, 'Seconds', model_version=MODEL_VERSION)
+        return model, scaler
 
     except Exception as e:
         logger.error(json.dumps({
@@ -213,6 +218,11 @@ def load_models():
             "timestamp": datetime.now(timezone.utc).isoformat()
         }))
         raise
+
+
+def load_model_once():
+    """Compatibility helper: load and cache model/scaler once per warm container."""
+    return load_models()
 
 
 # -----------------------
@@ -286,7 +296,7 @@ def lambda_handler(event, context):
 
     try:
         # Ensure model/scaler loaded (cached across invocations while the container lives)
-        load_models()
+        load_model_once()
 
         # Parse input
         if isinstance(event.get('body'), str):
