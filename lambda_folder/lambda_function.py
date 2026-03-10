@@ -24,17 +24,21 @@ PREDICTIONS_S3_PREFIX = os.getenv("PREDICTIONS_S3_PREFIX", "predictions")
 # Default model version (override in env if you version your models)
 MODEL_VERSION = os.getenv("MODEL_VERSION", "v1")
 
-FEATURE_COLS = [
+# Features con las que se entrenó el modelo (deben coincidir con preprocess.py)
+MODEL_FEATURE_COLS = [
     'cpu_usage', 'ram_usage', 'disk_io',
     'network_traffic', 'temperature',
     'cpu_spike_count', 'ram_spike_count',
     'uptime_hours',
     'cpu_ram_ratio', 'thermal_pressure',
     'spike_total', 'io_network_ratio',
-    'risk_score', 'cpu_critical',
-    'ram_critical', 'temp_critical',
-    'multi_critical',
 ]
+
+# Features extra solo para logging/explicabilidad (no van al modelo)
+EXPLAIN_FEATURE_COLS = MODEL_FEATURE_COLS + [
+    'risk_score', 'cpu_critical', 'ram_critical', 'temp_critical', 'multi_critical'
+]
+FEATURE_COLS = EXPLAIN_FEATURE_COLS  # mantiene compatibilidad con tests actuales
 
 # -----------------------
 # Logging
@@ -307,12 +311,13 @@ def lambda_handler(event, context):
         if scaler is None:
             raise RuntimeError("Scaler not loaded properly")
 
-        df_scaled = pd.DataFrame(
-            scaler.transform(df),
-            columns=FEATURE_COLS
-        )
+        if model is None:
+            raise RuntimeError("Model not loaded properly")
 
-        # Predictions
+        df_scaled = pd.DataFrame(
+            scaler.transform(df[MODEL_FEATURE_COLS]),  # ← solo 12 features
+            columns=MODEL_FEATURE_COLS
+        )
         will_fail = bool(model.predict(df_scaled)[0])
         probability = round(float(model.predict_proba(df_scaled)[0][1]), 4)
         risk_level = get_risk_level(probability)
