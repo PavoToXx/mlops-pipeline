@@ -224,3 +224,5 @@ mlflow.db
 
 #Imagenes
 *.png
+
+infra/*

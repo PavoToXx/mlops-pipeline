@@ -75,7 +75,7 @@ def test_lambda_handler_success(sample_input):
     mock_scaler = MagicMock()
     mock_model.predict.return_value       = np.array([1])
     mock_model.predict_proba.return_value = np.array([[0.1, 0.9]])
-    mock_scaler.transform.return_value    = np.zeros((1, len(FEATURE_COLS)))
+    mock_scaler.transform.return_value    = np.zeros((1, len(lf.MODEL_FEATURE_COLS)))
 
     event = {'body': sample_input}
 
@@ -105,7 +105,7 @@ def test_lambda_handler_body_string(sample_input):
     mock_scaler = MagicMock()
     mock_model.predict.return_value       = np.array([0])
     mock_model.predict_proba.return_value = np.array([[0.8, 0.2]])
-    mock_scaler.transform.return_value    = np.zeros((1, len(FEATURE_COLS)))
+    mock_scaler.transform.return_value    = np.zeros((1, len(lf.MODEL_FEATURE_COLS)))
 
     event = {'body': json.dumps(sample_input)}
 
