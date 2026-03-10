@@ -23,12 +23,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
     uv pip install --system -r /tmp/requirements.lambda.txt && \
     pip cache purge
 
-# Copiar artefactos preentrenados (modelo JSON + scaler) para carga sin S3
-# Esto hace que el cold start sea instantáneo (no descarga desde S3)
-RUN mkdir -p ${LAMBDA_TASK_ROOT}/models
-COPY models/model.json ${LAMBDA_TASK_ROOT}/models/model.json
-COPY models/scaler.pkl ${LAMBDA_TASK_ROOT}/models/scaler.pkl
-
 COPY lambda_folder/lambda_function.py ${LAMBDA_TASK_ROOT}
 
 CMD ["lambda_function.lambda_handler"]
