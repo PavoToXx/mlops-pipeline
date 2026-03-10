@@ -38,6 +38,7 @@ MODEL_FEATURE_COLS = [
 EXPLAIN_FEATURE_COLS = MODEL_FEATURE_COLS + [
     'risk_score', 'cpu_critical', 'ram_critical', 'temp_critical', 'multi_critical'
 ]
+
 FEATURE_COLS = EXPLAIN_FEATURE_COLS  # mantiene compatibilidad con tests actuales
 
 # -----------------------
@@ -252,8 +253,7 @@ def build_features(raw: dict) -> pd.DataFrame:
         'multi_critical': int(cpu > 90) + int(ram > 90) + int(temp > 80),
     }
 
-    return pd.DataFrame([features])[MODEL_FEATURE_COLS]
-
+    return pd.DataFrame([features])[FEATURE_COLS]
 
 # -----------------------
 # Risk level helper
