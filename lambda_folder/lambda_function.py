@@ -314,8 +314,11 @@ def lambda_handler(event, context):
         if model is None:
             raise RuntimeError("Model not loaded properly")
 
+        # Asegurarse de pasar solo las columnas usadas por el modelo al scaler
+        df_model_input = df[MODEL_FEATURE_COLS]
+
         df_scaled = pd.DataFrame(
-            scaler.transform(df[MODEL_FEATURE_COLS]),  # ← solo 12 features
+            scaler.transform(df_model_input),
             columns=MODEL_FEATURE_COLS
         )
         will_fail = bool(model.predict(df_scaled)[0])
