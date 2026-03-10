@@ -8,6 +8,7 @@ os.environ["JOBLIB_MULTIPROCESSING"] = "0"
 import joblib
 import numpy as np
 import pandas as pd
+from xgboost import Booster
 import tempfile
 import logging
 import time
@@ -59,7 +60,7 @@ _cloudwatch = boto3.client("cloudwatch")
 # -----------------------
 # Globals for cached models
 # -----------------------
-model = None
+model_local = None
 scaler = None
 
 # -----------------------
@@ -145,16 +146,31 @@ def _log_prediction(body_raw: dict, probability: float, will_fail: bool,
 # -----------------------
 # Model loading
 # -----------------------
+
+def _load_xgboost_from_json(json_path: str):
+    """Load XGBoost model from native JSON format (pre-serialized in image)."""
+    try:
+        booster = Booster(model_file=json_path)
+        logger.info(json.dumps({
+            "event": "model_loaded_from_json",
+            "path": json_path,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }))
+        return booster
+    except Exception as e:
+        logger.warning(f"Failed to load JSON model: {e}")
+        return None
+
 def load_models():
     """Download model/scaler from S3 once and cache in module-level globals."""
-    global model, scaler
+    global model_local, scaler
 
-    if model is not None and scaler is not None:
+    if model_local is not None and scaler is not None:
         logger.info(json.dumps({
             "event": "model_cache_hit",
             "timestamp": datetime.now(timezone.utc).isoformat()
         }))
-        return model, scaler
+        return model_local, scaler
 
     start_time = time.time()
     tmp = tempfile.gettempdir()
@@ -172,7 +188,32 @@ def load_models():
             "scaler_key": SCALER_KEY,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }))
-        # Prefer local copies (helpful for local dev/tests) if present under repository `models/`
+        # Try embedded JSON first (fastest: no S3 download needed)
+        embedded_json_path = os.path.join(os.path.dirname(__file__), 'models', 'model.json')
+        if os.path.exists(embedded_json_path):
+            loaded_model = _load_xgboost_from_json(embedded_json_path)
+            if loaded_model is not None:
+                logger.info(json.dumps({
+                    "event": "using_embedded_model",
+                    "path": embedded_json_path,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }))
+                model_local = loaded_model
+                scaler_local_path = os.path.join(os.path.dirname(__file__), 'models', 'scaler.pkl')
+                if os.path.exists(scaler_local_path):
+                    loaded_scaler = joblib.load(scaler_local_path)
+                    scaler = loaded_scaler
+                    load_time = time.time() - start_time
+                    logger.info(json.dumps({
+                        "event": "model_loaded",
+                        "load_time_seconds": round(load_time, 3),
+                        "source": "embedded_json",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }))
+                    log_metric('ModelLoadTime', load_time, 'Seconds', model_version=MODEL_VERSION)
+                    return model_local, scaler
+
+        # Fallback: Prefer local copies (helpful for local dev/tests)
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         local_model_path = os.path.join(repo_root, 'models', 'model.pkl')
         local_scaler_path = os.path.join(repo_root, 'models', 'scaler.pkl')
@@ -198,7 +239,7 @@ def load_models():
             loaded_model = joblib.load(model_local_path)
             loaded_scaler = joblib.load(scaler_local_path)
 
-        model = loaded_model
+        model_local = loaded_model
         scaler = loaded_scaler
 
         load_time = time.time() - start_time
@@ -209,7 +250,7 @@ def load_models():
         }))
 
         log_metric('ModelLoadTime', load_time, 'Seconds', model_version=MODEL_VERSION)
-        return model, scaler
+        return model_local, scaler
 
     except Exception as e:
         logger.error(json.dumps({
@@ -317,7 +358,7 @@ def lambda_handler(event, context):
         if scaler is None:
             raise RuntimeError("Scaler not loaded properly")
 
-        if model is None:
+        if model_local is None:
             raise RuntimeError("Model not loaded properly")
 
         # Asegurarse de pasar solo las columnas usadas por el modelo al scaler
@@ -327,8 +368,18 @@ def lambda_handler(event, context):
             scaler.transform(df_model_input),
             columns=MODEL_FEATURE_COLS
         )
-        will_fail = bool(model.predict(df_scaled)[0])
-        probability = round(float(model.predict_proba(df_scaled)[0][1]), 4)
+        # XGBoost Booster (JSON format) uses different API than sklearn
+        if hasattr(model_local, 'predict'):
+            # sklearn-compatible model (pickle)
+            will_fail = bool(model_local.predict(df_scaled)[0])
+            probability = round(float(model_local.predict(df_scaled)[0][1]), 4)
+        else:
+            # XGBoost Booster (JSON format)
+            import xgboost as xgb
+            dmatrix = xgb.DMatrix(df_scaled)
+            proba = model_local.predict(dmatrix)[0]
+            probability = round(float(proba), 4)
+            will_fail = bool(proba >= 0.5)
         risk_level = get_risk_level(probability)
 
         latency = time.time() - start_time
