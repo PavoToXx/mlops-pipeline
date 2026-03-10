@@ -60,7 +60,7 @@ _cloudwatch = boto3.client("cloudwatch")
 # -----------------------
 # Globals for cached models
 # -----------------------
-model_local = None
+model = None
 scaler = None
 
 # -----------------------
@@ -163,14 +163,14 @@ def _load_xgboost_from_json(json_path: str):
 
 def load_models():
     """Download model/scaler from S3 once and cache in module-level globals."""
-    global model_local, scaler
+    global model, scaler
 
-    if model_local is not None and scaler is not None:
+    if model is not None and scaler is not None:
         logger.info(json.dumps({
             "event": "model_cache_hit",
             "timestamp": datetime.now(timezone.utc).isoformat()
         }))
-        return model_local, scaler
+        return model, scaler
 
     start_time = time.time()
     tmp = tempfile.gettempdir()
@@ -198,7 +198,7 @@ def load_models():
                     "path": embedded_json_path,
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }))
-                model_local = loaded_model
+                model = loaded_model
                 scaler_local_path = os.path.join(os.path.dirname(__file__), 'models', 'scaler.pkl')
                 if os.path.exists(scaler_local_path):
                     loaded_scaler = joblib.load(scaler_local_path)
@@ -211,7 +211,7 @@ def load_models():
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }))
                     log_metric('ModelLoadTime', load_time, 'Seconds', model_version=MODEL_VERSION)
-                    return model_local, scaler
+                    return model, scaler
 
         # Fallback: Prefer local copies (helpful for local dev/tests)
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -232,14 +232,14 @@ def load_models():
             _s3.download_file(BUCKET, MODEL_KEY, f"{tmp}/model.pkl")
             _s3.download_file(BUCKET, SCALER_KEY, f"{tmp}/scaler.pkl")
 
-            model_local_path = f"{tmp}/model.pkl"
+            model_path = f"{tmp}/model.pkl"
             scaler_local_path = f"{tmp}/scaler.pkl"
 
             # Load with joblib
-            loaded_model = joblib.load(model_local_path)
+            loaded_model = joblib.load(model_path)
             loaded_scaler = joblib.load(scaler_local_path)
 
-        model_local = loaded_model
+        model = loaded_model
         scaler = loaded_scaler
 
         load_time = time.time() - start_time
@@ -250,7 +250,7 @@ def load_models():
         }))
 
         log_metric('ModelLoadTime', load_time, 'Seconds', model_version=MODEL_VERSION)
-        return model_local, scaler
+        return model, scaler
 
     except Exception as e:
         logger.error(json.dumps({
@@ -358,7 +358,7 @@ def lambda_handler(event, context):
         if scaler is None:
             raise RuntimeError("Scaler not loaded properly")
 
-        if model_local is None:
+        if model is None:
             raise RuntimeError("Model not loaded properly")
 
         # Asegurarse de pasar solo las columnas usadas por el modelo al scaler
@@ -369,15 +369,15 @@ def lambda_handler(event, context):
             columns=MODEL_FEATURE_COLS
         )
         # XGBoost Booster (JSON format) uses different API than sklearn
-        if hasattr(model_local, 'predict'):
+        if hasattr(model, 'predict'):
             # sklearn-compatible model (pickle)
-            will_fail = bool(model_local.predict(df_scaled)[0])
-            probability = round(float(model_local.predict(df_scaled)[0][1]), 4)
+            will_fail = bool(model.predict(df_scaled)[0])
+            probability = round(float(model.predict(df_scaled)[0][1]), 4)
         else:
             # XGBoost Booster (JSON format)
             import xgboost as xgb
             dmatrix = xgb.DMatrix(df_scaled)
-            proba = model_local.predict(dmatrix)[0]
+            proba = model.predict(dmatrix)[0]
             probability = round(float(proba), 4)
             will_fail = bool(proba >= 0.5)
         risk_level = get_risk_level(probability)
