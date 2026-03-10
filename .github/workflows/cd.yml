@@ -76,55 +76,36 @@ jobs:
             --function-name ${{ env.LAMBDA_NAME }} \
             --region ${{ env.AWS_REGION }}
           echo "✅ Lambda actualizada correctamente"
-          
+
       - name: Ensure Lambda Function URL exists and expose it
         run: |
-          set -e
-          EXISTING=$(aws lambda get-function-url-config \
-            --function-name ${{ env.LAMBDA_NAME }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'FunctionUrl' --output text 2>/dev/null || echo "NONE")
-          if [ "$EXISTING" = "NONE" ]; then
-            echo "Creating Lambda Function URL..."
-            aws lambda add-permission \
-              --function-name ${{ env.LAMBDA_NAME }} \
-              --statement-id FunctionURLAllowPublicAccess \
-              --action lambda:InvokeFunctionUrl \
-              --principal "*" \
-              --function-url-auth-type NONE \
-              --region ${{ env.AWS_REGION }} || true
-
-            aws lambda create-function-url-config \
-              --function-name ${{ env.LAMBDA_NAME }} \
-              --auth-type NONE \
-              --cors '{"AllowOrigins":["*"],"AllowMethods":["POST","GET"],"AllowHeaders":["*"]}' \
-              --region ${{ env.AWS_REGION }}
-          fi
-
-          URL=$(aws lambda get-function-url-config \
-            --function-name ${{ env.LAMBDA_NAME }} \
-            --region ${{ env.AWS_REGION }} \
-            --query 'FunctionUrl' --output text)
-
-          echo "LAMBDA_URL=$URL" >> $GITHUB_ENV
-          echo "🌐 Lambda Function URL: $URL"
-      - name: Habilitar Lambda Function URL (si no existe)
-        run: |
-          # Verificar si ya existe la Function URL
-          EXISTING=$(aws lambda get-function-url-config \
+          EXISTING_URL=$(aws lambda get-function-url-config \
             --function-name ${{ env.LAMBDA_NAME }} \
             --region ${{ env.AWS_REGION }} \
             --query 'FunctionUrl' --output text 2>/dev/null || echo "NONE")
 
-          if [ "$EXISTING" = "NONE" ]; then
+          if [ "$EXISTING_URL" = "NONE" ]; then
             echo "Creando Lambda Function URL..."
-            aws lambda add-permission \
+            
+            # Revisar si el permiso ya existe
+            # Si existe, el resultado será distinto de vacío
+            PERMISSION_EXISTE=$(aws lambda get-policy \
               --function-name ${{ env.LAMBDA_NAME }} \
-              --statement-id FunctionURLAllowPublicAccess \
-              --action lambda:InvokeFunctionUrl \
-              --principal "*" \
-              --function-url-auth-type NONE \
-              --region ${{ env.AWS_REGION }} 2>/dev/null || true
+              --region ${{ env.AWS_REGION }} \
+              --query "Policy" --output text 2>/dev/null | grep FunctionURLAllowPublicAccess || true)
+            
+            if [ -z "$PERMISSION_EXISTE" ]; then
+              echo "Agregando permiso FunctionURLAllowPublicAccess"
+              aws lambda add-permission \
+                --function-name ${{ env.LAMBDA_NAME }} \
+                --statement-id FunctionURLAllowPublicAccess \
+                --action lambda:InvokeFunctionUrl \
+                --principal "*" \
+                --function-url-auth-type NONE \
+                --region ${{ env.AWS_REGION }}
+            else
+              echo "El permiso FunctionURLAllowPublicAccess ya existe, no se agrega"
+            fi
 
             aws lambda create-function-url-config \
               --function-name ${{ env.LAMBDA_NAME }} \
@@ -133,6 +114,7 @@ jobs:
               --region ${{ env.AWS_REGION }}
           fi
 
+          # Obtener y exportar la URL (esto puede ir después del bloque anterior)
           URL=$(aws lambda get-function-url-config \
             --function-name ${{ env.LAMBDA_NAME }} \
             --region ${{ env.AWS_REGION }} \
