@@ -247,6 +247,19 @@ if __name__ == "__main__":
     # ── Post-run ─────────────────────────────────────────────────────────────
     print_feature_importance(model, X_train.columns.tolist())
 
+    # Guardar modelo en formato JSON nativo de XGBoost para carga rápida en Lambda
+    try:
+        json_model_path = "models/model.json"
+        model.save_model(json_model_path)
+        print(f"\n✅ Modelo guardado en formato JSON: {json_model_path}")
+        
+        # Cargar desde JSON para validar
+        from xgboost import Booster
+        test_booster = Booster(model_file=json_model_path)
+        print(f"✅ Modelo JSON validado: {json_model_path}")
+    except Exception as e:
+        print(f"⚠️  Error guardando modelo JSON: {e}")
+
     print(f"\n{'='*45}")
     if metrics["f1"] >= 0.85:
         print(f"✅ MODELO APROBADO  — F1: {metrics['f1']}")
