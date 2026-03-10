@@ -76,6 +76,7 @@ jobs:
             --function-name ${{ env.LAMBDA_NAME }} \
             --region ${{ env.AWS_REGION }}
           echo "✅ Lambda actualizada correctamente"
+          
       - name: Ensure Lambda Function URL exists and expose it
         run: |
           set -e

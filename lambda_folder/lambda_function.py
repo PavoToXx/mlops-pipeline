@@ -252,7 +252,7 @@ def build_features(raw: dict) -> pd.DataFrame:
         'multi_critical': int(cpu > 90) + int(ram > 90) + int(temp > 80),
     }
 
-    return pd.DataFrame([features])[FEATURE_COLS]
+    return pd.DataFrame([features])[MODEL_FEATURE_COLS]
 
 
 # -----------------------
