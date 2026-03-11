@@ -2,70 +2,101 @@
 
 Proyecto de MLOps para entrenar, evaluar y servir un modelo de clasificacion que predice fallas de servidor a partir de metricas operativas.
 
-## Que incluye
+## Estado actual del proyecto
 
-- Pipeline de datos y entrenamiento (`src/`)
-- **Tracking de experimentos con MLflow** (`mlruns/`)
-- API REST con FastAPI (`api/`)
-- Empaquetado con Docker (`Dockerfile`, `docker-compose.yml`)
-- Variante de inferencia en AWS Lambda (`lambda/`)
-- CI con tests automatizados (`.github/workflows/ci.yml`)
-- CI de entrenamiento automático (`.github/workflows/train.yml`)
-- CD con despliegue a Lambda (`.github/workflows/cd.yml`)
-- **Monitoreo con CloudWatch** (`monitoring/`)
+- Arquitectura final basada en entornos virtuales (`venv`) para desarrollo local.
+- Serving en dos modos:
+  - API REST local con FastAPI.
+  - Inferencia productiva en AWS Lambda (contenedor) expuesta por Function URL.
+- SageMaker **no forma parte del flujo activo de ejecucion**.
+  - Hay dependencias heredadas en `requirements` por compatibilidad/historico, pero el flujo actual no depende de SageMaker para entrenar ni servir.
 
-## Objetivo
+## Function URL desplegada
 
-Predecir si un servidor fallara en las proximas horas, entregando:
-- Probabilidad de falla
-- Nivel de riesgo
-- Tiempo estimado a falla
-- Causas probables
+Endpoint publico actual de Lambda Function URL:
 
-## Estructura del proyecto
+`https://6knpvdrrmvtajeo4cqp7ipifi40ynohs.lambda-url.us-east-1.on.aws/`
 
-```text
-api/                # FastAPI app, dependencias y routers
-src/                # Generacion de datos, preprocesamiento, entrenamiento y evaluacion
-data/               # Datasets raw y procesados
-models/             # Artefactos del modelo (no versionados)
-reports/            # Metricas y reportes
-lambda/             # Funcion y contenedor para AWS Lambda
-mlruns/             # Experimentos MLflow (no versionado)
-monitoring/         # Scripts de configuracion de CloudWatch
-tests/              # Tests unitarios (pipeline, API, Lambda)
-.github/workflows/  # CI/CD con GitHub Actions
+## Objetivo funcional
+
+A partir de metricas operativas del servidor, el sistema estima:
+
+- Si habra fallo (`will_fail`)
+- Probabilidad de fallo (`probability`)
+- Nivel de riesgo (`risk_level`)
+- Tiempo estimado a fallo (solo en API FastAPI)
+- Causas probables (solo en API FastAPI)
+
+## Arquitectura (final)
+
+```mermaid
+flowchart LR
+    A[Metricas del servidor] --> B[Pipeline ML local]
+    B --> C[Modelo + scaler en models/]
+    C --> D[FastAPI local]
+    C --> E[Imagen Lambda contenedorizada]
+    E --> F[AWS Lambda Function URL]
+    F --> G[Clientes / Integraciones]
+    F --> H[CloudWatch logs + metricas]
+    F --> I[S3 predicciones historicas]
 ```
 
-## Stack tecnologico
+## Estructura del repositorio
 
-- Python 3.11+
+```text
+api/                    # App FastAPI, esquemas y routers
+src/                    # Generacion de datos, preprocess, train, evaluate, predict
+lambda_folder/          # Handler Lambda + Dockerfile de inferencia
+monitoring/             # Setup de alarmas/dashboard CloudWatch
+data/                   # Dataset raw y procesado
+models/                 # Artefactos del modelo (local)
+reports/                # Metricas y reportes
+scripts/                # Monitoreo de calidad
+tests/                  # Tests unitarios e integracion
+.github/workflows/      # CI, entrenamiento, CD y monitor programado
+```
+
+## Stack tecnico
+
+- Python 3.13 (definido en `.python-version`)
 - FastAPI + Uvicorn
 - scikit-learn + XGBoost
-- **MLflow** (experiment tracking)
-- pandas + numpy
+- MLflow (tracking de experimentos)
+- pandas + numpy + joblib
 - Docker / Docker Compose
-- AWS Lambda + ECR + S3
-- **AWS CloudWatch** (logs y metricas)
-- **GitHub Actions** (CI/CD)
+- AWS Lambda (contenedor), ECR, S3, CloudWatch
+- Pytest
 
-## Instalacion local
+## Requisitos previos
+
+- Python 3.13 recomendado
+- `pip`
+- Docker Desktop (opcional para containers)
+- AWS CLI configurado (solo para despliegue/monitoring)
+
+## Instalacion local (venv)
+
+### Windows PowerShell
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Linux/macOS
 
 ```bash
 python -m venv .venv
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
-# Linux/macOS
 source .venv/bin/activate
-
+pip install --upgrade pip
 pip install -r requirements.txt
-
-Note: This project has been tested with Python 3.14 for the Lambda container. If you run the Lambda container locally, the `lambda_folder/Dockerfile` uses Python 3.14. Local development and tests run under your venv Python (3.11+ is supported), but ensure `scikit-learn` and `cloudpickle` versions match the model serialization to avoid deserialization warnings.
 ```
 
-## Flujo ML (entrenamiento y evaluacion)
+## Pipeline ML (entrenamiento y evaluacion)
 
-Ejecuta desde la raiz del proyecto:
+Ejecutar desde la raiz del repo:
 
 ```bash
 python src/generate_data.py
@@ -74,227 +105,156 @@ python src/train.py
 python src/evaluate.py
 ```
 
-Artefactos generados:
-- `data/raw/server_metrics.csv`
-- `data/processed/X_train.csv`, `data/processed/X_test.csv`
-- `data/processed/y_train.csv`, `data/processed/y_test.csv`
-- `models/model.pkl`, `models/scaler.pkl`
-- `reports/metrics.json`
-- `mlruns/` (experimentos MLflow)
+Artefactos principales:
 
-## MLflow Tracking
+- Dataset raw: `data/raw/server_metrics.csv`
+- Splits procesados: `data/processed/*.csv`
+- Modelo/scaler: `models/model.pkl`, `models/scaler.pkl`
+- Modelo JSON XGBoost: `models/model.json`
+- Metricas y graficas: `reports/metrics.json`, `reports/*.png`
+- Runs de MLflow: `mlruns/`
 
-El entrenamiento registra automaticamente en MLflow:
-- Hiperparametros del modelo
-- Metricas de evaluacion
-- Modelo entrenado
-- Tags (tipo de modelo, aprobacion)
+## MLflow
 
-Ver experimentos:
+El entrenamiento registra automaticamente parametros, metricas y artefactos.
 
 ```bash
 mlflow ui
 ```
 
-Accede a `http://localhost:5000` para explorar runs, comparar metricas y descargar modelos.
+UI local: `http://localhost:5000`
 
-## Ejecutar API
+## Servir el modelo
 
-### Opcion A: Uvicorn (local)
+## Opcion A - FastAPI local
 
 ```bash
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Opcion B: Docker Compose
+Documentacion: `http://localhost:8000/docs`
+
+Endpoints:
+
+- `GET /health`
+- `GET /metrics`
+- `POST /predict`
+
+## Opcion B - Docker Compose (FastAPI)
 
 ```bash
 docker compose up --build
 ```
 
-Accesos:
-- Swagger UI: `http://localhost:8000/docs`
-- Healthcheck: `http://localhost:8000/health`
-- Metricas: `http://localhost:8000/metrics`
+## Opcion C - AWS Lambda Function URL (produccion)
 
-## Endpoints
+Function URL:
 
-### `GET /health`
+`https://6knpvdrrmvtajeo4cqp7ipifi40ynohs.lambda-url.us-east-1.on.aws/`
 
-Valida estado del servicio y carga del modelo.
+Ejemplo de invocacion:
 
-### `GET /metrics`
-
-Retorna metricas almacenadas en `reports/metrics.json`.
-
-### `POST /predict`
-
-Request:
-
-```json
-{
-  "cpu_usage": 87.5,
-  "ram_usage": 91.2,
-  "disk_io": 78.4,
-  "network_traffic": 520.0,
-  "temperature": 83.0,
-  "cpu_spike_count": 14,
-  "ram_spike_count": 11,
-  "uptime_hours": 1500.0
-}
+```bash
+curl -X POST "https://6knpvdrrmvtajeo4cqp7ipifi40ynohs.lambda-url.us-east-1.on.aws/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cpu_usage": 87.5,
+    "ram_usage": 91.2,
+    "disk_io": 78.4,
+    "network_traffic": 520.0,
+    "temperature": 83.0,
+    "cpu_spike_count": 14,
+    "ram_spike_count": 11,
+    "uptime_hours": 1500.0
+  }'
 ```
 
-Response ejemplo:
+Respuesta esperada (Lambda):
 
 ```json
 {
   "will_fail": true,
   "probability": 0.8421,
-  "risk_level": "CRITICAL",
-  "time_to_failure": "< 1 hour",
-  "top_causes": ["high_cpu", "high_ram", "high_temperature"],
-  "model_version": "v1.0.0"
+  "risk_level": "CRITICAL"
 }
 ```
 
-## Tests
+Nota: FastAPI (`/predict`) devuelve campos adicionales (`time_to_failure`, `top_causes`, `model_version`) que no forman parte de la respuesta minima de Lambda actual.
 
-El proyecto incluye pruebas en:
-- `tests/test_preprocess.py` - Tests de feature engineering
-- `tests/test_predict.py` - Tests del predictor
-- `tests/test_lambda.py` - Tests de la funcion Lambda
-- `tests/test_api.py` - Tests de endpoints FastAPI
+## Contrato de entrada
 
-Ejecutar tests:
+Campos esperados para prediccion:
+
+- `cpu_usage` (float, 0-100)
+- `ram_usage` (float, 0-100)
+- `disk_io` (float, 0-100)
+- `network_traffic` (float, >= 0)
+- `temperature` (float, 0-150)
+- `cpu_spike_count` (int, >= 0)
+- `ram_spike_count` (int, >= 0)
+- `uptime_hours` (float, >= 0)
+
+## Pruebas
+
+Correr suite completa:
 
 ```bash
 pytest tests/ -v
+```
 
-# Con coverage
-pytest tests/ --cov=api --cov=src --cov=lambda -v
-
-Tips for running tests and Lambda locally:
-
-- The tests mock AWS where needed; to run Lambda handler manually use `invoke_lambda_local.py` at project root which calls `lambda_folder.lambda_function.lambda_handler` and will load local `models/model.pkl` and `models/scaler.pkl` if present.
-- To build the Lambda container (uses Python 3.14):
+Cobertura opcional:
 
 ```bash
-docker build -t ml-lambda:local lambda_folder
-docker run --rm -v $(pwd):/var/task -w /var/task ml-lambda:local \
-  python -c "from lambda_folder import lambda_function as lf; print(lf.lambda_handler({'body': {'cpu_usage':50,'ram_usage':60,'temperature':70,'disk_io':30,'network_traffic':100,'cpu_spike_count':1,'ram_spike_count':0,'uptime_hours':10}}, None))"
+pytest tests/ --cov=api --cov=src --cov=lambda_folder -v
 ```
 
-- If you see `InconsistentVersionWarning` when loading models, either align `scikit-learn` versions between training and serving (recommended), or reserialize the model with the target sklearn version. Tests suppress this warning during loading.
+Invocar handler Lambda en local:
+
+```bash
+python invoke_lambda_local.py
 ```
 
-## CI/CD
+## CI/CD (GitHub Actions)
 
-### Workflows de GitHub Actions
-
-- **`ci.yml`**: Ejecuta tests en `push` y `pull_request` hacia `main`
-- **`train.yml`**: Pipeline completo de entrenamiento
-  - Genera datos, preprocesa, entrena y evalua
-  - Registra experimentos en MLflow
-  - Valida metricas contra threshold (F1 >= 0.85)
-  - Sube artefactos (modelo, metricas, MLflow runs)
-  - Comenta metricas en PRs
-- **`cd.yml`**: Despliegue continuo a Lambda
-  - Construye imagen Docker de `lambda/`
-  - Publica en Amazon ECR
-  - Actualiza funcion Lambda cuando hay cambios en `lambda/**`
+- `ci.yml`: tests en `push` y `pull_request` a `main`.
+- `train.yml`: pipeline de entrenamiento, evaluacion y validacion de threshold (`F1 >= 0.85`).
+- `cd.yml`: build/push de imagen a ECR y actualizacion de Lambda.
+- `monitor.yml`: monitor programado de calidad de predicciones.
 
 ## Monitoreo
 
-Scripts en `monitoring/` para configurar CloudWatch:
+- Metricas custom en CloudWatch namespace `MLOps/ServerFailure`.
+- Logs estructurados JSON desde Lambda.
+- Persistencia opcional de predicciones en S3.
+- Setup de alarmas/dashboard: `python monitoring/setup_cloudwatch.py`
 
-```bash
-# Configurar alarmas y dashboard
-python monitoring/setup_cloudwatch.py
+Ver detalle en `monitoring/README.md`.
 
-# Con parametros personalizados
-python monitoring/setup_cloudwatch.py --function-name tu-lambda --sns-topic arn:aws:sns:...
-```
+## Variables de entorno relevantes
 
-### Local CloudWatch / metrics
+Solo nombres (sin valores):
 
-Cuando se ejecuta el código en local el proceso puede tener credenciales AWS presentes pero sin permisos para `cloudwatch:PutMetricData`, lo que genera warnings `AccessDenied` en logs. Para evitar esto el código detecta entornos locales y omite las llamadas a CloudWatch por defecto.
+- `MODELS_S3_BUCKET`
+- `MODEL_S3_KEY`
+- `SCALER_S3_KEY`
+- `PREDICTIONS_S3_BUCKET`
+- `PREDICTIONS_S3_PREFIX`
+- `MODEL_VERSION`
+- `FORCE_CLOUDWATCH`
 
-- Forzar envío de métricas a CloudWatch en local (no recomendado salvo que tu identidad tenga permisos): exporta la variable de entorno `FORCE_CLOUDWATCH=true` antes de ejecutar.
+## Seguridad y buenas practicas
 
-Ejemplo (PowerShell):
+- No subir secretos ni credenciales (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, tokens).
+- No versionar datos sensibles ni artefactos pesados (`models/*.pkl`, datasets privados, `mlruns/` con info sensible).
+- Usar GitHub Secrets para CI/CD.
+- Revisar logs antes de compartirlos para evitar fuga de informacion operativa.
+- Rotar credenciales si alguna vez fueron expuestas accidentalmente.
+- Limitar permisos IAM al minimo necesario (principio de menor privilegio).
 
-```powershell
-$Env:FORCE_CLOUDWATCH = 'true'
-python .\invoke_lambda_local.py
-```
+## Limites conocidos
 
-Ejemplo (Linux/macOS):
-
-```bash
-export FORCE_CLOUDWATCH=true
-python invoke_lambda_local.py
-```
-
-Si no estableces `FORCE_CLOUDWATCH`, el servicio seguirá publicando logs estructurados y subiendo predicciones a S3 (si está configurado), pero no llamará a CloudWatch, evitando errores `AccessDenied` durante desarrollo.
-
-### Ejecutar tests localmente (comandos recomendados)
-
-```bash
-# Crear y activar venv
-python -m venv .venv
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
-# Linux/macOS
-source .venv/bin/activate
-
-# Instalar dependencias (usado por CI)
-pip install -r requirements.txt
-
-# Correr tests
-pytest tests/ -v
-
-# Invocar Lambda handler localmente
-python invoke_lambda_local.py
-```
-
-### Probar integraciones con artefactos reales (CI)
-
-Si quieres ejecutar tests de integración que usan los artefactos reales del modelo, tienes dos opciones:
-
-- Proveer archivos dummy locales en `models/` antes de ejecutar `pytest` (útil en entornos sin acceso a S3):
-
-```bash
-mkdir -p models
-# crear archivos vacíos o serializados compatibles con joblib
-touch models/model.pkl
-touch models/scaler.pkl
-pytest tests/ -v
-```
-
-- O permitir que el job de CI descargue los artefactos desde S3. En GitHub Actions puedes activar esto estableciendo variables de entorno en el workflow (o en la interfaz de Actions):
-
-- Paso 1: Añade secretos en el repositorio (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`).
-- Paso 2: Habilita la descarga de artefactos fijando `RUN_INTEGRATION_TESTS=true` en el job del workflow (`.github/workflows/ci.yml`). El workflow descargará `models/model.pkl` y `models/scaler.pkl` desde el bucket configurado antes de ejecutar `pytest`.
-
-Nota: Si activas la descarga en CI asegúrate de que las credenciales usadas tengan permiso `s3:GetObject` sobre las claves indicadas.
-
-Componentes de monitoreo:
-- **Alarmas**: Latencia alta, errores, predicciones criticas, throttles
-- **Dashboard**: Metricas visuales de predicciones, latencia, errores
-- **Logs estructurados**: JSON con eventos, metricas y traces
-- **Metricas custom**: Namespace `MLOps/ServerFailure`
-
-Ver documentacion completa en [`monitoring/README.md`](monitoring/README.md).
-
-## Seguridad y publicacion responsable
-
-Para evitar filtrar informacion sensible:
-- No publiques secretos (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, tokens, API keys).
-- No subas artefactos pesados o sensibles (`models/*.pkl`, `data/raw/*.csv`, `data/processed/*.csv`, `mlruns/`).
-- Usa `GitHub Secrets` para credenciales de despliegue.
-- Si publicas logs, revisa que no incluyan IDs internos, rutas privadas o datos operativos sensibles.
-- Antes de abrir el repositorio, rota cualquier credencial usada en entornos de prueba.
-- Los experimentos de MLflow pueden contener datos sensibles; no los versiones en Git.
+- El `requirements.txt` incluye paquetes historicos (incluyendo SageMaker) que no son obligatorios para el flujo principal local + Lambda.
+- Hay diferencias de contrato de salida entre FastAPI y Lambda (intencional por simplicidad en Lambda).
 
 ## Licencia
 
