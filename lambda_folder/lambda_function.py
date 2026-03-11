@@ -25,6 +25,10 @@ SCALER_KEY    = os.getenv("SCALER_S3_KEY", "models/scaler.pkl")
 # Where prediction events will be stored (optional)
 PREDICTIONS_S3_BUCKET = os.getenv("PREDICTIONS_S3_BUCKET", BUCKET)
 PREDICTIONS_S3_PREFIX = os.getenv("PREDICTIONS_S3_PREFIX", "predictions")
+# Region fallback: prefer explicit env vars, otherwise default to us-east-1
+REGION = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or os.getenv("AWS_REGION_NAME") or "us-east-1"
+PREDICTIONS_SQS_URL = os.getenv("PREDICTIONS_SQS_URL", None)
+PREDICTIONS_SQS_URL = os.getenv("PREDICTIONS_SQS_URL", None)
 
 # Default model version (override in env if you version your models)
 MODEL_VERSION = os.getenv("MODEL_VERSION", "v1")
@@ -54,8 +58,10 @@ logger.setLevel(logging.INFO)
 # -----------------------
 # Clients (reusable)
 # -----------------------
-_s3 = boto3.client("s3")
-_cloudwatch = boto3.client("cloudwatch")
+_s3 = boto3.client("s3", region_name=REGION)
+_cloudwatch = boto3.client("cloudwatch", region_name=REGION)
+_sqs = boto3.client("sqs", region_name=REGION)
+_sqs = boto3.client("sqs")
 
 # -----------------------
 # Globals for cached models
@@ -68,21 +74,19 @@ scaler = None
 # -----------------------
 def log_metric(metric_name: str, value: float, unit: str = 'None', model_version: str = 'None'):
     """Send a custom metric datapoint to CloudWatch (non-blocking)."""
+    # Emit metrics as structured logs (fail-open). Avoid synchronous CloudWatch API calls
     try:
-        dims = []
-        if model_version:
-            dims = [{"Name": "model_version", "Value": str(model_version)}]
-        _cloudwatch.put_metric_data(
-            Namespace='MLOps/ServerFailure',
-            MetricData=[{
-                'MetricName': metric_name,
-                'Value': float(value),
-                'Unit': unit,
-                'Dimensions': dims
-            }]
-        )
+        metric_record = {
+            "event": "metric",
+            "metric_name": metric_name,
+            "value": float(value),
+            "unit": unit,
+            "model_version": model_version,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        logger.info(json.dumps(metric_record))
     except Exception as e:
-        logger.warning("Failed to log metric %s: %s", metric_name, e)
+        logger.warning("Failed to emit structured metric %s: %s", metric_name, e)
 
 
 # -----------------------
@@ -91,7 +95,8 @@ def log_metric(metric_name: str, value: float, unit: str = 'None', model_version
 def _log_prediction(body_raw: dict, probability: float, will_fail: bool,
                     model_version: str = MODEL_VERSION,
                     s3_prefix: str = PREDICTIONS_S3_PREFIX,
-                    s3_bucket: str = PREDICTIONS_S3_BUCKET):
+                    s3_bucket: str = PREDICTIONS_S3_BUCKET,
+                    request_id: str = "None"):
     """
     - Print JSON (goes to CloudWatch Logs)
     - Put a datapoint to CloudWatch (namespace: mlops/predictions)
@@ -110,34 +115,22 @@ def _log_prediction(body_raw: dict, probability: float, will_fail: bool,
         # 1) Structured log -> stdout -> CloudWatch Logs
         print(json.dumps(record, ensure_ascii=False))
 
-        # 2) CloudWatch metric
-        try:
-            _cloudwatch.put_metric_data(
-                Namespace="mlops/predictions",
-                MetricData=[{
-                    "MetricName": "prediction_probability",
-                    "Dimensions": [
-                        {"Name": "model_version", "Value": str(model_version)}
-                    ],
-                    "Value": float(probability),
-                    "Unit": "None"
-                }]
-            )
-        except Exception as e:
-            logger.warning("CloudWatch put_metric_data failed: %s", e)
+        # 2) Emit metric via structured log (already printed above)
 
-        # 3) Optional: Upload single-line JSON to S3 for historical storage / monitoring pipeline
-        if s3_bucket and s3_prefix:
+        # 3) Asynchronously publish prediction event to SQS for downstream persistence/processing
+        if PREDICTIONS_SQS_URL:
             try:
-                # Use timestamped key so writes are idempotent and cheap
-                key = f"{s3_prefix.rstrip('/')}/{time.strftime('%Y/%m/%d')}/preds-{ts}.jsonl"
-                _s3.put_object(
-                    Bucket=s3_bucket,
-                    Key=key,
-                    Body=json.dumps(record, ensure_ascii=False) + "\n"
-                )
+                msg_kwargs = {
+                    "QueueUrl": PREDICTIONS_SQS_URL,
+                    "MessageBody": json.dumps(record, ensure_ascii=False)
+                }
+                if PREDICTIONS_SQS_URL.endswith('.fifo'):
+                    group_id = request_id or str(ts)
+                    msg_kwargs["MessageGroupId"] = str(group_id)
+                    msg_kwargs["MessageDeduplicationId"] = str(ts) + "-" + str(abs(hash(json.dumps(record))))
+                _sqs.send_message(**msg_kwargs)
             except Exception as e:
-                logger.warning("S3 put_object failed: %s", e)
+                logger.warning("SQS publish failed: %s", e)
 
     except Exception as e:
         logger.error("Prediction logging error: %s", e)
@@ -413,7 +406,8 @@ def lambda_handler(event, context):
                 will_fail=will_fail,
                 model_version=MODEL_VERSION,
                 s3_prefix=PREDICTIONS_S3_PREFIX,
-                s3_bucket=PREDICTIONS_S3_BUCKET
+                s3_bucket=PREDICTIONS_S3_BUCKET,
+                request_id=request_id
             )
         except Exception as e:
             logger.warning("Prediction logging helper failed: %s", e)
