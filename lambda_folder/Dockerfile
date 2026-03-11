@@ -1,6 +1,14 @@
 # 1. Definimos el argumento de versión
 ARG PYTHON_VERSION="3.13"
 
+# Nota de construcción:
+# Este Dockerfile asume que el contexto de build contiene la carpeta `models/`
+# (es decir, ejecuta `docker build` desde la raíz del repositorio).
+# Ejemplo desde la raíz del proyecto:
+#   docker build -f lambda_folder/Dockerfile -t mlops-lambda .
+# Si prefieres construir desde dentro de `lambda_folder`, copia `models/`
+# dentro de `lambda_folder/` antes de construir.
+
 # 2. Usamos la imagen base específica. 
 # Nota: AWS Lambda ya provee imágenes con versiones fijas, 
 # pero aquí usamos el ARG para documentar la versión.
@@ -24,5 +32,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip cache purge
 
 COPY lambda_folder/lambda_function.py ${LAMBDA_TASK_ROOT}
+
+COPY models/ ${LAMBDA_TASK_ROOT}/models/
 
 CMD ["lambda_function.lambda_handler"]

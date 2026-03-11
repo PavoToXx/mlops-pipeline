@@ -8,15 +8,14 @@ __pycache__/
 dist/
 build/
 .env
-# keep models in build context so Dockerfile can COPY models/
-# models/*.pkl
-data/raw/*.csv
+models/*.pkl
+data/raw/*.csv  
 data/processed/*.csv
 mlflow/mlruns/
 .gitignore
 *.ipynb
 .pytest_cache/
-.aws/
+.aws
 *.pem
 *.key
 .venv
