@@ -15,9 +15,10 @@ import boto3
 from datetime import datetime, timedelta
 from statistics import mean
 
-s3 = boto3.client("s3")
+s3 = boto3.client("s3",region_name="us-east-1")
 sns = boto3.client("sns")
 secrets = boto3.client("secretsmanager")
+session = boto3.Session(region_name="us-east-1")
 
 # ENV
 BUCKET = os.getenv("PREDICTIONS_S3_BUCKET")

@@ -1,8 +1,6 @@
 name: Model quality monitor
 
 on:
-  schedule:
-    - cron: '0 6 * * *'  # todos los días a 06:00 UTC
   workflow_dispatch:
 
 permissions:
