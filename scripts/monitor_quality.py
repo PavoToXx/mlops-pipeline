@@ -17,7 +17,7 @@ from statistics import mean
 
 s3 = boto3.client("s3",region_name="us-east-1")
 sns = boto3.client("sns",region_name="us-east-1")
-secrets = boto3.client("secretsmanager")
+secrets = boto3.client("secretsmanager", region_name="us-east-1")
 session = boto3.Session(region_name="us-east-1")
 
 # ENV
